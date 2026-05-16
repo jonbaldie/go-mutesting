@@ -15,13 +15,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 	"syscall"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/avito-tech/go-mutesting/internal/annotation"
 	"github.com/avito-tech/go-mutesting/internal/console"
+	"github.com/avito-tech/go-mutesting/internal/coverage"
 	"github.com/avito-tech/go-mutesting/internal/filter"
 	"github.com/avito-tech/go-mutesting/internal/importing"
 	"github.com/avito-tech/go-mutesting/internal/models"
@@ -46,6 +49,7 @@ const (
 	returnHelp
 	returnBashCompletion
 	returnError
+	returnMsiThresholdNotMet // exit 4: quality gate failed
 )
 
 func checkArguments(args []string, opts *models.Options) (bool, int) {
@@ -201,57 +205,93 @@ MUTATOR:
 	}
 
 	report := &models.Report{}
+	var reportMu sync.Mutex
 
-	for _, file := range files {
-		console.Verbose(opts, "Mutate %q", file)
+	// Detect module path for coverage profile matching.
+	modulePath := detectModulePath()
 
-		annotationProcessor := annotation.NewProcessor()
-		skipFilterProcessor := filter.NewSkipMakeArgsFilter()
+	// Group files by package to enable per-package coverage runs.
+	pkgs := importing.PackagesWithFilesOfArgs(opts.Remaining.Targets, opts)
 
-		collectors := []filter.NodeCollector{
-			annotationProcessor,
-			skipFilterProcessor,
+	// coverProfileForPkg runs go test -coverprofile for pkg and returns the profile.
+	// Returns nil when coverage is disabled or unavailable (soft failure).
+	coverProfileForPkg := func(pkgFiles []string) *coverage.Profile {
+		if opts.Exec.NoExec || !opts.Exec.Coverage {
+			return nil
 		}
-
-		filters := []filter.NodeFilter{
-			annotationProcessor,
-			skipFilterProcessor,
+		pkgPath := packageImportPath(pkgFiles)
+		if pkgPath == "" {
+			return nil
 		}
-
-		src, fset, pkg, info, err := parser.ParseAndTypeCheckFile(file, collectors)
+		profilePath := filepath.Join(tmpDir, strings.ReplaceAll(pkgPath, "/", "_")+".coverage.out")
+		if err := runCoverageProfile(pkgPath, profilePath); err != nil {
+			console.Verbose(opts, "Coverage unavailable for %q: %v", pkgPath, err)
+			return nil
+		}
+		prof, err := coverage.ParseProfile(profilePath, modulePath)
 		if err != nil {
-			return exitError(err.Error())
+			console.Verbose(opts, "Coverage parse failed for %q: %v", pkgPath, err)
+			return nil
 		}
+		return prof
+	}
 
-		err = os.MkdirAll(tmpDir+"/"+filepath.Dir(file), 0755)
-		if err != nil {
-			panic(err)
-		}
+	for _, importPkg := range pkgs {
+		coverProfile := coverProfileForPkg(importPkg.Files)
 
-		tmpFile := tmpDir + "/" + file
+		for _, file := range importPkg.Files {
+			console.Verbose(opts, "Mutate %q", file)
 
-		originalFile := fmt.Sprintf("%s.original", tmpFile)
-		err = osutil.CopyFile(file, originalFile)
-		if err != nil {
-			panic(err)
-		}
-		console.Debug(opts, "Save original into %q", originalFile)
+			annotationProcessor := annotation.NewProcessor()
+			skipFilterProcessor := filter.NewSkipMakeArgsFilter()
 
-		mutationID := 0
+			collectors := []filter.NodeCollector{
+				annotationProcessor,
+				skipFilterProcessor,
+			}
 
-		if opts.Filter.Match != "" {
-			m, err := regexp.Compile(opts.Filter.Match)
+			nodeFilters := []filter.NodeFilter{
+				annotationProcessor,
+				skipFilterProcessor,
+			}
+
+			src, fset, pkg, info, err := parser.ParseAndTypeCheckFile(file, collectors)
 			if err != nil {
-				return exitError("Match regex is not valid: %v", err)
+				return exitError(err.Error())
 			}
 
-			for _, f := range astutil.Functions(src) {
-				if m.MatchString(f.Name.Name) {
-					mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, filters)
-				}
+			err = os.MkdirAll(tmpDir+"/"+filepath.Dir(file), 0755)
+			if err != nil {
+				panic(err)
 			}
-		} else {
-			_ = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, filters)
+
+			tmpFile := tmpDir + "/" + file
+
+			originalFile := fmt.Sprintf("%s.original", tmpFile)
+			err = osutil.CopyFile(file, originalFile)
+			if err != nil {
+				panic(err)
+			}
+			console.Debug(opts, "Save original into %q", originalFile)
+
+			absFile, _ := filepath.Abs(file)
+
+			mutationID := 0
+
+			if opts.Filter.Match != "" {
+				m, err := regexp.Compile(opts.Filter.Match)
+				if err != nil {
+					return exitError("Match regex is not valid: %v", err)
+				}
+
+				for _, f := range astutil.Functions(src) {
+					if m.MatchString(f.Name.Name) {
+						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile)
+					}
+				}
+			} else {
+				_ = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile)
+			}
 		}
 	}
 
@@ -267,14 +307,7 @@ MUTATOR:
 
 	if !opts.Exec.NoExec {
 		if !opts.Config.SilentMode {
-			fmt.Printf("The mutation score is %f (%d passed, %d failed, %d duplicated, %d skipped, total is %d)\n",
-				report.Stats.Msi,
-				report.Stats.KilledCount,
-				report.Stats.EscapedCount,
-				report.Stats.DuplicatedCount,
-				report.Stats.SkippedCount,
-				report.Stats.TotalMutantsCount,
-			)
+			printSummary(report)
 		}
 	} else {
 		fmt.Println("Cannot do a mutation testing summary since no exec command was executed.")
@@ -296,6 +329,69 @@ MUTATOR:
 		console.Verbose(opts, "Save report into %q", models.ReportHTMLFileName)
 	}
 
+	return checkQualityGates(opts, report)
+}
+
+// printSummary prints the final mutation testing summary including per-mutator breakdown.
+func printSummary(report *models.Report) {
+	msiPct := report.Stats.Msi * 100
+	covMsiPct := report.Stats.CoveredCodeMsi * 100
+	fmt.Printf(
+		"The mutation score is %.2f%% (%d killed, %d escaped, %d errored, %d not covered, %d skipped, %d total)\n",
+		msiPct,
+		report.Stats.KilledCount,
+		report.Stats.EscapedCount,
+		report.Stats.ErrorCount,
+		report.Stats.NotCoveredCount,
+		report.Stats.SkippedCount,
+		report.Stats.TotalMutantsCount,
+	)
+	fmt.Printf("The covered-code mutation score is %.2f%%\n", covMsiPct)
+
+	if len(report.MutatorStats) > 0 {
+		fmt.Println("\nPer-mutator breakdown:")
+		// Sort by name for stable output.
+		sorted := make([]models.MutatorStats, len(report.MutatorStats))
+		copy(sorted, report.MutatorStats)
+		sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+		for _, ms := range sorted {
+			killRate := 0.0
+			if ms.Total > 0 {
+				killRate = float64(ms.Killed) / float64(ms.Total) * 100
+			}
+			fmt.Printf("  %-35s  killed %3d / %-3d  (%.0f%%)\n", ms.Name, ms.Killed, ms.Total, killRate)
+		}
+	}
+}
+
+// checkQualityGates returns returnMsiThresholdNotMet if configured thresholds
+// are not met, otherwise returnOk.
+func checkQualityGates(opts *models.Options, report *models.Report) int {
+	msiPct := report.Stats.Msi * 100
+	covMsiPct := report.Stats.CoveredCodeMsi * 100
+
+	// CLI flags take precedence over config file values.
+	minMsi := opts.Score.MinMsi
+	if minMsi == 0 && opts.Config.MinMsi > 0 {
+		minMsi = opts.Config.MinMsi
+	}
+	minCoveredMsi := opts.Score.MinCoveredMsi
+	if minCoveredMsi == 0 && opts.Config.MinCoveredMsi > 0 {
+		minCoveredMsi = opts.Config.MinCoveredMsi
+	}
+
+	failed := false
+	if minMsi > 0 && msiPct < minMsi {
+		fmt.Fprintf(os.Stderr, "MSI %.2f%% is below minimum required %.2f%%\n", msiPct, minMsi)
+		failed = true
+	}
+	if minCoveredMsi > 0 && covMsiPct < minCoveredMsi {
+		fmt.Fprintf(os.Stderr, "Covered MSI %.2f%% is below minimum required %.2f%%\n", covMsiPct, minCoveredMsi)
+		failed = true
+	}
+	if failed {
+		return returnMsiThresholdNotMet
+	}
 	return returnOk
 }
 
@@ -313,7 +409,10 @@ func mutate(
 	mutatedFile string,
 	execs []string,
 	stats *models.Report,
+	mu *sync.Mutex,
 	filters []filter.NodeFilter,
+	absFile string,
+	coverProfile *coverage.Profile,
 ) int {
 	for _, m := range mutators {
 		console.Debug(opts, "Mutator %s", m.Name)
@@ -346,12 +445,14 @@ func mutate(
 			} else if duplicate {
 				console.Debug(opts, "%q is a duplicate, we ignore it", mutationFile)
 
+				mu.Lock()
 				stats.Stats.DuplicatedCount++
+				mu.Unlock()
 			} else {
 				console.Debug(opts, "Save mutation into %q with checksum %s", mutationFile, checksum)
 
 				if !opts.Exec.NoExec {
-					execExitCode := mutateExec(opts, pkg, originalFile, src, mutationFile, execs, &mutant)
+					execExitCode := mutateExec(opts, pkg, originalFile, mutationFile, execs, &mutant)
 
 					console.Debug(opts, "Exited with %d", execExitCode)
 
@@ -361,45 +462,57 @@ func mutate(
 					}
 					mutant.Mutator.MutatedSourceCode = string(mutatedSourceCode)
 
+					// Check coverage before recording result.
+					startLine := mutant.Mutator.OriginalStartLine
+					notCovered := coverProfile != nil && startLine > 0 && !coverProfile.IsCovered(absFile, int(startLine))
+
 					msg := fmt.Sprintf("%q with checksum %s", mutationFile, checksum)
 
-					switch execExitCode {
-					case 0: // Tests failed - all ok
-						out := fmt.Sprintf("PASS %s\n", msg)
-						if !opts.Config.SilentMode {
-							console.PrintPass(out)
-						}
-
-						mutant.ProcessOutput = out
-						stats.Killed = append(stats.Killed, mutant)
-						stats.Stats.KilledCount++
-					case 1: // Tests passed
-						out := fmt.Sprintf("FAIL %s\n", msg)
-						if !opts.Config.SilentMode {
-							console.PrintFail(out)
-						}
-
-						mutant.ProcessOutput = out
-						stats.Escaped = append(stats.Escaped, mutant)
-						stats.Stats.EscapedCount++
-					case 2: // Did not compile
-						out := fmt.Sprintf("SKIP %s\n", msg)
+					mu.Lock()
+					if notCovered {
+						out := fmt.Sprintf("NOT COVERED %s\n", msg)
 						if !opts.Config.SilentMode {
 							console.PrintSkip(out)
 						}
-
 						mutant.ProcessOutput = out
-						stats.Stats.SkippedCount++
-					default:
-						out := fmt.Sprintf("UNKOWN exit code for %s\n", msg)
-						if !opts.Config.SilentMode {
-							console.PrintUnknown(out)
+						stats.NotCovered = append(stats.NotCovered, mutant)
+						stats.Stats.NotCoveredCount++
+					} else {
+						switch execExitCode {
+						case 0: // Tests failed → mutation killed
+							out := fmt.Sprintf("PASS %s\n", msg)
+							if !opts.Config.SilentMode {
+								console.PrintPass(out)
+							}
+							mutant.ProcessOutput = out
+							stats.Killed = append(stats.Killed, mutant)
+							stats.Stats.KilledCount++
+						case 1: // Tests passed → mutation escaped
+							out := fmt.Sprintf("FAIL %s\n", msg)
+							if !opts.Config.SilentMode {
+								console.PrintFail(out)
+							}
+							mutant.ProcessOutput = out
+							stats.Escaped = append(stats.Escaped, mutant)
+							stats.Stats.EscapedCount++
+						case 2: // Did not compile → skip
+							out := fmt.Sprintf("SKIP %s\n", msg)
+							if !opts.Config.SilentMode {
+								console.PrintSkip(out)
+							}
+							mutant.ProcessOutput = out
+							stats.Stats.SkippedCount++
+						default:
+							out := fmt.Sprintf("UNKNOWN exit code for %s\n", msg)
+							if !opts.Config.SilentMode {
+								console.PrintUnknown(out)
+							}
+							mutant.ProcessOutput = out
+							stats.Errored = append(stats.Errored, mutant)
+							stats.Stats.ErrorCount++
 						}
-
-						mutant.ProcessOutput = out
-						stats.Errored = append(stats.Errored, mutant)
-						stats.Stats.ErrorCount++
 					}
+					mu.Unlock()
 				}
 			}
 
@@ -420,7 +533,6 @@ func mutateExec(
 	opts *models.Options,
 	pkg *types.Package,
 	file string,
-	src ast.Node,
 	mutationFile string,
 	execs []string,
 	mutant *models.Mutant,
@@ -483,19 +595,19 @@ func mutateExec(
 		mutant.Diff = string(diff)
 
 		switch execExitCode {
-		case 0: // Tests passed -> FAIL
+		case 0: // Tests passed → FAIL (mutation escaped)
 			if !opts.Config.SilentMode {
 				console.PrintDiff(diff)
 			}
 
 			execExitCode = 1
-		case 1: // Tests failed -> PASS
+		case 1: // Tests failed → PASS (mutation killed)
 			if opts.General.Debug {
 				console.PrintDiff(diff)
 			}
 
 			execExitCode = 0
-		case 2: // Did not compile -> SKIP
+		case 2: // Did not compile → SKIP
 			if opts.General.Verbose {
 				fmt.Println("Mutation did not compile")
 			}
@@ -503,7 +615,7 @@ func mutateExec(
 			if opts.General.Debug {
 				console.PrintDiff(diff)
 			}
-		default: // Unknown exit code -> SKIP
+		default: // Unknown exit code
 			if !opts.Config.SilentMode {
 				fmt.Println("Unknown exit code")
 				console.PrintDiff(diff)
@@ -536,8 +648,6 @@ func mutateExec(
 	if err != nil {
 		panic(err)
 	}
-
-	// TODO timeout here
 
 	err = execCommand.Wait()
 
@@ -585,4 +695,53 @@ func saveAST(mutationBlackList map[string]struct{}, file string, fset *token.Fil
 	}
 
 	return checksum, false, nil
+}
+
+// detectModulePath reads the module path from go.mod in the current directory.
+func detectModulePath() string {
+	data, err := os.ReadFile("go.mod")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimPrefix(line, "module ")
+		}
+	}
+	return ""
+}
+
+// runCoverageProfile runs go test -coverprofile for pkg and writes output to profilePath.
+// Test failures are tolerated — the profile may still be written.
+func runCoverageProfile(pkg, profilePath string) error {
+	cmd := exec.Command("go", "test", "-coverprofile="+profilePath, pkg)
+	cmd.Env = os.Environ()
+	// We intentionally ignore test failures: a package with failing tests should
+	// still produce a (partial) coverage profile so we can identify covered lines.
+	_ = cmd.Run()
+	if _, err := os.Stat(profilePath); err != nil {
+		return fmt.Errorf("coverage profile not created for %q", pkg)
+	}
+	return nil
+}
+
+// packageImportPath returns the import path for the package containing files,
+// by parsing the first file's package declaration.
+func packageImportPath(files []string) string {
+	if len(files) == 0 {
+		return ""
+	}
+	f, err := filepath.Abs(files[0])
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Dir(f)
+	cmd := exec.Command("go", "list", dir)
+	cmd.Env = os.Environ()
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

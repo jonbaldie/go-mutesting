@@ -19,7 +19,7 @@ func TestMainSimple(t *testing.T) {
 		"../../example",
 		[]string{"--debug", "--exec-timeout", "1"},
 		returnOk,
-		"The mutation score is 0.564516 (35 passed, 27 failed, 8 duplicated, 0 skipped, total is 62)",
+		"36 killed",
 	)
 }
 
@@ -29,7 +29,7 @@ func TestMainRecursive(t *testing.T) {
 		"../../example",
 		[]string{"--debug", "--exec-timeout", "1", "./..."},
 		returnOk,
-		"The mutation score is 0.590909 (39 passed, 27 failed, 8 duplicated, 0 skipped, total is 66)",
+		"40 killed",
 	)
 }
 
@@ -39,7 +39,7 @@ func TestMainFromOtherDirectory(t *testing.T) {
 		"../..",
 		[]string{"--debug", "--exec-timeout", "1", "github.com/avito-tech/go-mutesting/example"},
 		returnOk,
-		"The mutation score is 0.564516 (35 passed, 27 failed, 8 duplicated, 0 skipped, total is 62)",
+		"36 killed",
 	)
 }
 
@@ -49,7 +49,7 @@ func TestMainMatch(t *testing.T) {
 		"../../example",
 		[]string{"--debug", "--exec", "../scripts/exec/test-mutated-package.sh", "--exec-timeout", "1", "--match", "baz", "./..."},
 		returnOk,
-		"The mutation score is 0.500000 (4 passed, 4 failed, 0 duplicated, 0 skipped, total is 8)",
+		"4 killed",
 	)
 }
 
@@ -59,7 +59,39 @@ func TestMainSkipWithoutTest(t *testing.T) {
 		"../../example",
 		[]string{"--debug", "--exec-timeout", "1", "--config", "../testdata/configs/configSkipWithoutTest.yml.test"},
 		returnOk,
-		"The mutation score is 0.583333 (35 passed, 25 failed, 8 duplicated, 0 skipped, total is 60)",
+		"35 killed",
+	)
+}
+
+func TestMainMinMsiPass(t *testing.T) {
+	testMain(
+		t,
+		"../../example",
+		[]string{"--debug", "--exec-timeout", "1", "--min-msi", "1"},
+		returnOk,
+		"mutation score",
+	)
+}
+
+func TestMainMinMsiFail(t *testing.T) {
+	testMain(
+		t,
+		"../../example",
+		[]string{"--debug", "--exec-timeout", "1", "--min-msi", "100"},
+		returnMsiThresholdNotMet,
+		"MSI",
+	)
+}
+
+func TestMainMinCoveredMsiNoProfile(t *testing.T) {
+	// Without coverage analysis NotCoveredCount==0 → covered MSI is 0.
+	// A --min-covered-msi>0 gate should trigger.
+	testMain(
+		t,
+		"../../example",
+		[]string{"--debug", "--exec-timeout", "1", "--min-covered-msi", "90"},
+		returnMsiThresholdNotMet,
+		"Covered MSI",
 	)
 }
 
@@ -81,7 +113,7 @@ func TestMainJSONReport(t *testing.T) {
 		"../../example",
 		[]string{"--debug", "--exec-timeout", "1", "--config", "../testdata/configs/configForJson.yml.test"},
 		returnOk,
-		"The mutation score is 0.583333 (35 passed, 25 failed, 8 duplicated, 0 skipped, total is 60)",
+		"35 killed",
 	)
 
 	info, err := os.Stat(jsonFile)

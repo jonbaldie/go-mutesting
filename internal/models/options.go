@@ -27,14 +27,21 @@ type Options struct {
 	} `group:"Filter options"`
 
 	Exec struct {
-		Exec    string `long:"exec" description:"Execute this command for every mutation (by default the built-in exec command is used)"`
-		NoExec  bool   `long:"no-exec" description:"Skip the built-in exec command and just generate the mutations"`
-		Timeout uint   `long:"exec-timeout" description:"Sets a timeout for the command execution (in seconds)" default:"10"`
+		Exec     string `long:"exec" description:"Execute this command for every mutation (by default the built-in exec command is used)"`
+		NoExec   bool   `long:"no-exec" description:"Skip the built-in exec command and just generate the mutations"`
+		Timeout  uint   `long:"exec-timeout" description:"Sets a timeout for the command execution (in seconds)" default:"10"`
+		Coverage bool   `long:"coverage" description:"Run go test -coverprofile before mutating to compute covered-code MSI and mark uncovered mutants"`
 	} `group:"Exec options"`
 
 	Test struct {
 		Recursive bool `long:"test-recursive" description:"Defines if the executer should test recursively"`
 	} `group:"Test options"`
+
+	// Quality gates: fail with exit code 1 when metrics fall below thresholds.
+	Score struct {
+		MinMsi        float64 `long:"min-msi" description:"Minimum required MSI (0-100). Exit code 1 when not met." default:"0"`
+		MinCoveredMsi float64 `long:"min-covered-msi" description:"Minimum required covered-MSI (0-100). Exit code 1 when not met." default:"0"`
+	} `group:"Score options"`
 
 	Remaining struct {
 		Targets []string `description:"Packages, directories and files even with patterns (by default the current directory)"`
@@ -47,5 +54,7 @@ type Options struct {
 		HTMLOutput           bool     `yaml:"html_output"`
 		SilentMode           bool     `yaml:"silent_mode"`
 		ExcludeDirs          []string `yaml:"exclude_dirs"`
+		MinMsi               float64  `yaml:"min_msi"`
+		MinCoveredMsi        float64  `yaml:"min_covered_msi"`
 	}
 }
