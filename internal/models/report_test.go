@@ -47,6 +47,7 @@ func TestMsiScore_Mixed(t *testing.T) {
 
 func TestCoveredMsiScore_ExcludesNotCovered(t *testing.T) {
 	r := &Report{
+		HasCoverage: true,
 		Stats: Stats{
 			KilledCount:     4,
 			EscapedCount:    2,
@@ -62,7 +63,8 @@ func TestCoveredMsiScore_ExcludesNotCovered(t *testing.T) {
 
 func TestCoveredMsiScore_AllNotCovered(t *testing.T) {
 	r := &Report{
-		Stats: Stats{NotCoveredCount: 5},
+		HasCoverage: true,
+		Stats:       Stats{NotCoveredCount: 5},
 	}
 	r.Calculate()
 	assert.Equal(t, 0.0, r.Stats.CoveredCodeMsi)

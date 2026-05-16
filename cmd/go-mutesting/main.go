@@ -223,7 +223,12 @@ MUTATOR:
 		if pkgPath == "" {
 			return nil
 		}
-		profilePath := filepath.Join(tmpDir, strings.ReplaceAll(pkgPath, "/", "_")+".coverage.out")
+		profileDir := filepath.Join(tmpDir, "coverage", filepath.FromSlash(pkgPath))
+		if err := os.MkdirAll(profileDir, 0755); err != nil {
+			console.Verbose(opts, "Cannot create coverage dir for %q: %v", pkgPath, err)
+			return nil
+		}
+		profilePath := filepath.Join(profileDir, "coverage.out")
 		if err := runCoverageProfile(pkgPath, profilePath); err != nil {
 			console.Verbose(opts, "Coverage unavailable for %q: %v", pkgPath, err)
 			return nil
@@ -238,6 +243,9 @@ MUTATOR:
 
 	for _, importPkg := range pkgs {
 		coverProfile := coverProfileForPkg(importPkg.Files)
+		if coverProfile != nil {
+			report.HasCoverage = true
+		}
 
 		for _, file := range importPkg.Files {
 			console.Verbose(opts, "Mutate %q", file)
@@ -370,13 +378,14 @@ func checkQualityGates(opts *models.Options, report *models.Report) int {
 	msiPct := report.Stats.Msi * 100
 	covMsiPct := report.Stats.CoveredCodeMsi * 100
 
-	// CLI flags take precedence over config file values.
+	// CLI flag is -1 when not provided; config file defaults to 0 when not set.
+	// CLI always wins when explicitly set (>= 0); fall back to config otherwise.
 	minMsi := opts.Score.MinMsi
-	if minMsi == 0 && opts.Config.MinMsi > 0 {
+	if minMsi < 0 {
 		minMsi = opts.Config.MinMsi
 	}
 	minCoveredMsi := opts.Score.MinCoveredMsi
-	if minCoveredMsi == 0 && opts.Config.MinCoveredMsi > 0 {
+	if minCoveredMsi < 0 {
 		minCoveredMsi = opts.Config.MinCoveredMsi
 	}
 
@@ -697,19 +706,16 @@ func saveAST(mutationBlackList map[string]struct{}, file string, fset *token.Fil
 	return checksum, false, nil
 }
 
-// detectModulePath reads the module path from go.mod in the current directory.
+// detectModulePath returns the current module path via `go list -m`.
+// This works regardless of where go.mod lives relative to the working directory.
 func detectModulePath() string {
-	data, err := os.ReadFile("go.mod")
+	cmd := exec.Command("go", "list", "-m")
+	cmd.Env = os.Environ()
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "module ") {
-			return strings.TrimPrefix(line, "module ")
-		}
-	}
-	return ""
+	return strings.TrimSpace(string(out))
 }
 
 // runCoverageProfile runs go test -coverprofile for pkg and writes output to profilePath.

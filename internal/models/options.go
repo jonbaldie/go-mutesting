@@ -37,10 +37,12 @@ type Options struct {
 		Recursive bool `long:"test-recursive" description:"Defines if the executer should test recursively"`
 	} `group:"Test options"`
 
-	// Quality gates: fail with exit code 1 when metrics fall below thresholds.
+	// Quality gates: fail with exit code 4 when metrics fall below thresholds.
+	// -1 is the "not set" sentinel so that --min-msi 0 is distinguishable from
+	// "flag not provided", and CLI always takes precedence over config file.
 	Score struct {
-		MinMsi        float64 `long:"min-msi" description:"Minimum required MSI (0-100). Exit code 1 when not met." default:"0"`
-		MinCoveredMsi float64 `long:"min-covered-msi" description:"Minimum required covered-MSI (0-100). Exit code 1 when not met." default:"0"`
+		MinMsi        float64 `long:"min-msi" description:"Minimum required MSI (0-100). Exit code 4 when not met." default:"-1"`
+		MinCoveredMsi float64 `long:"min-covered-msi" description:"Minimum required covered-MSI (0-100). Exit code 4 when not met." default:"-1"`
 	} `group:"Score options"`
 
 	Remaining struct {

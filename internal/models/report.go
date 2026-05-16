@@ -15,6 +15,10 @@ type Report struct {
 	Killed         []Mutant       `json:"killed"`
 	Errored        []Mutant       `json:"errored"`
 	NotCovered     []Mutant       `json:"notCovered,omitempty"`
+	// HasCoverage is true when a coverage profile was loaded before mutation.
+	// It distinguishes "coverage was run and all code is covered" (NotCoveredCount==0
+	// but CoveredCodeMsi is meaningful) from "coverage was never run".
+	HasCoverage bool `json:"-"`
 }
 
 // Stats holds aggregate mutation metrics.
@@ -32,7 +36,8 @@ type Stats struct {
 	DuplicatedCount      int64   `json:"-"`
 }
 
-// MutatorStats holds per-mutator kill/escape counts.
+// MutatorStats holds per-mutator kill/escape counts for tested mutants only.
+// Not-covered mutants are excluded from all counts here.
 type MutatorStats struct {
 	Name    string `json:"name"`
 	Killed  int64  `json:"killed"`
@@ -75,12 +80,11 @@ func (report *Report) MsiScore() float64 {
 }
 
 // CoveredMsiScore returns killed / (total - notCovered).
-// Returns 0 when NotCoveredCount is zero, which indicates that coverage
-// analysis was not performed (rather than that all code is covered).
-// When you run with coverage enabled, any uncovered mutants will appear
-// in NotCoveredCount and this metric becomes meaningful.
+// Returns 0 when coverage was never enabled (HasCoverage==false).
+// When coverage IS enabled and NotCoveredCount==0, every mutant is covered
+// and CoveredMsiScore equals MsiScore.
 func (report *Report) CoveredMsiScore() float64 {
-	if report.Stats.NotCoveredCount == 0 {
+	if !report.HasCoverage {
 		return 0.0
 	}
 	covered := report.TotalCount() - report.Stats.NotCoveredCount
@@ -90,8 +94,7 @@ func (report *Report) CoveredMsiScore() float64 {
 	return float64(report.Stats.KilledCount+report.Stats.ErrorCount+report.Stats.SkippedCount) / float64(covered)
 }
 
-// TotalCount returns the count of all mutants that were actually tested plus
-// those skipped due to compile errors, but NOT not-covered mutants.
+// TotalCount returns all mutants: killed, escaped, errored, skipped, and not-covered.
 func (report *Report) TotalCount() int64 {
 	return report.Stats.KilledCount +
 		report.Stats.EscapedCount +
@@ -100,7 +103,8 @@ func (report *Report) TotalCount() int64 {
 		report.Stats.NotCoveredCount
 }
 
-// computeMutatorStats aggregates per-mutator kill/escape/skip counts.
+// computeMutatorStats aggregates kill/escape/error counts per mutator for mutants
+// that were actually executed (not-covered mutants are excluded).
 func (report *Report) computeMutatorStats() []MutatorStats {
 	counts := make(map[string]*MutatorStats)
 	add := func(ms []Mutant, inc func(*MutatorStats)) {
@@ -116,7 +120,6 @@ func (report *Report) computeMutatorStats() []MutatorStats {
 	add(report.Killed, func(s *MutatorStats) { s.Killed++ })
 	add(report.Escaped, func(s *MutatorStats) { s.Escaped++ })
 	add(report.Errored, func(s *MutatorStats) { s.Killed++ }) // errors count as kills
-	add(report.NotCovered, func(s *MutatorStats) {})          // not counted in kill rate
 
 	result := make([]MutatorStats, 0, len(counts))
 	for _, s := range counts {
