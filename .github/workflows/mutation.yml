@@ -46,4 +46,5 @@ jobs:
             github.com/avito-tech/go-mutesting/mutator/statement \
             github.com/avito-tech/go-mutesting/internal/filter \
             github.com/avito-tech/go-mutesting/internal/coverage \
+            github.com/avito-tech/go-mutesting/internal/gitdiff \
             github.com/avito-tech/go-mutesting/internal/models

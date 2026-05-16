@@ -26,6 +26,7 @@ import (
 	"github.com/avito-tech/go-mutesting/internal/console"
 	"github.com/avito-tech/go-mutesting/internal/coverage"
 	"github.com/avito-tech/go-mutesting/internal/filter"
+	"github.com/avito-tech/go-mutesting/internal/gitdiff"
 	"github.com/avito-tech/go-mutesting/internal/importing"
 	"github.com/avito-tech/go-mutesting/internal/models"
 	"github.com/avito-tech/go-mutesting/internal/parser"
@@ -210,6 +211,17 @@ MUTATOR:
 	// Detect module path for coverage profile matching.
 	modulePath := detectModulePath()
 
+	// Load git diff changed lines when --git-diff-lines is set.
+	var gitChangedLines gitdiff.ChangedLines
+	if opts.GitDiff.Lines {
+		var err error
+		gitChangedLines, err = gitdiff.ParseChangedLines(opts.GitDiff.Base)
+		if err != nil {
+			return exitError("Cannot load git diff: %v", err)
+		}
+		console.Verbose(opts, "Git diff filter active against %q (%d changed files)", opts.GitDiff.Base, len(gitChangedLines))
+	}
+
 	// Group files by package to enable per-package coverage runs.
 	pkgs := importing.PackagesWithFilesOfArgs(opts.Remaining.Targets, opts)
 
@@ -294,11 +306,11 @@ MUTATOR:
 
 				for _, f := range astutil.Functions(src) {
 					if m.MatchString(f.Name.Name) {
-						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile)
+						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines)
 					}
 				}
 			} else {
-				_ = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile)
+				_ = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines)
 			}
 		}
 	}
@@ -316,6 +328,9 @@ MUTATOR:
 	if !opts.Exec.NoExec {
 		if !opts.Config.SilentMode {
 			printSummary(report)
+		}
+		if opts.Logger.GitHub {
+			printGitHubAnnotations(report)
 		}
 	} else {
 		fmt.Println("Cannot do a mutation testing summary since no exec command was executed.")
@@ -372,9 +387,27 @@ func printSummary(report *models.Report) {
 	}
 }
 
+// printGitHubAnnotations writes escaped mutants as GitHub Actions ::warning
+// annotations so they appear inline in PR diffs.
+func printGitHubAnnotations(report *models.Report) {
+	for _, m := range report.Escaped {
+		fmt.Printf("::warning file=%s,line=%d::Mutant escaped: %s\n",
+			m.Mutator.OriginalFilePath,
+			m.Mutator.OriginalStartLine,
+			m.Mutator.MutatorName,
+		)
+	}
+}
+
 // checkQualityGates returns returnMsiThresholdNotMet if configured thresholds
 // are not met, otherwise returnOk.
 func checkQualityGates(opts *models.Options, report *models.Report) int {
+	// When no mutations were generated (e.g. --git-diff-lines on an unchanged
+	// package), skip threshold checks rather than failing with 0% MSI.
+	if opts.Score.IgnoreMsiWithNoMutations && report.Stats.TotalMutantsCount == 0 {
+		return returnOk
+	}
+
 	msiPct := report.Stats.Msi * 100
 	covMsiPct := report.Stats.CoveredCodeMsi * 100
 
@@ -422,6 +455,7 @@ func mutate(
 	filters []filter.NodeFilter,
 	absFile string,
 	coverProfile *coverage.Profile,
+	gitChangedLines gitdiff.ChangedLines,
 ) int {
 	for _, m := range mutators {
 		console.Debug(opts, "Mutator %s", m.Name)
@@ -461,6 +495,18 @@ func mutate(
 				console.Debug(opts, "Save mutation into %q with checksum %s", mutationFile, checksum)
 
 				if !opts.Exec.NoExec {
+					// Git diff filter: skip mutations not on changed lines.
+					// Run a fast local diff to get the mutated line number before
+					// invoking go test (which is expensive).
+					if gitChangedLines != nil {
+						diffOut, _ := exec.Command("diff", "--label=Original", "--label=New", "-u", originalFile, mutationFile).CombinedOutput()
+						lineNum := int(parser.FindOriginalStartLine(diffOut))
+						if !gitdiff.IsLineChanged(gitChangedLines, absFile, lineNum) {
+							console.Debug(opts, "Skip %q at line %d (not in git diff)", mutationFile, lineNum)
+							goto advanceMutation
+						}
+					}
+
 					execExitCode := mutateExec(opts, pkg, originalFile, mutationFile, execs, &mutant)
 
 					console.Debug(opts, "Exited with %d", execExitCode)
@@ -525,6 +571,7 @@ func mutate(
 				}
 			}
 
+		advanceMutation:
 			changed <- true
 
 			// Ignore original state
