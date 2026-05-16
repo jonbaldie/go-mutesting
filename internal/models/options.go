@@ -27,14 +27,35 @@ type Options struct {
 	} `group:"Filter options"`
 
 	Exec struct {
-		Exec    string `long:"exec" description:"Execute this command for every mutation (by default the built-in exec command is used)"`
-		NoExec  bool   `long:"no-exec" description:"Skip the built-in exec command and just generate the mutations"`
-		Timeout uint   `long:"exec-timeout" description:"Sets a timeout for the command execution (in seconds)" default:"10"`
+		Exec     string `long:"exec" description:"Execute this command for every mutation (by default the built-in exec command is used)"`
+		NoExec   bool   `long:"no-exec" description:"Skip the built-in exec command and just generate the mutations"`
+		Timeout  uint   `long:"exec-timeout" description:"Sets a timeout for the command execution (in seconds)" default:"10"`
+		Coverage bool   `long:"coverage" description:"Run go test -coverprofile before mutating to compute covered-code MSI and mark uncovered mutants"`
 	} `group:"Exec options"`
+
+	// GitDiff limits mutation to lines changed since a git base ref.
+	// Pair with --ignore-msi-with-no-mutations for clean CI on unchanged packages.
+	GitDiff struct {
+		Lines bool   `long:"git-diff-lines" description:"Only mutate lines changed since the git diff base"`
+		Base  string `long:"git-diff-base" description:"Git ref to diff against for --git-diff-lines" default:"master"`
+	} `group:"Git diff options"`
+
+	Logger struct {
+		GitHub bool `long:"logger-github" description:"Emit escaped mutants as GitHub Actions ::warning annotations"`
+	} `group:"Logger options"`
 
 	Test struct {
 		Recursive bool `long:"test-recursive" description:"Defines if the executer should test recursively"`
 	} `group:"Test options"`
+
+	// Quality gates: fail with exit code 4 when metrics fall below thresholds.
+	// -1 is the "not set" sentinel so that --min-msi 0 is distinguishable from
+	// "flag not provided", and CLI always takes precedence over config file.
+	Score struct {
+		MinMsi                  float64 `long:"min-msi" description:"Minimum required MSI (0-100). Exit code 4 when not met." default:"-1"`
+		MinCoveredMsi           float64 `long:"min-covered-msi" description:"Minimum required covered-MSI (0-100). Exit code 4 when not met." default:"-1"`
+		IgnoreMsiWithNoMutations bool   `long:"ignore-msi-with-no-mutations" description:"Exit 0 even when MSI thresholds are not met if no mutations were generated (useful with --git-diff-lines)"`
+	} `group:"Score options"`
 
 	Remaining struct {
 		Targets []string `description:"Packages, directories and files even with patterns (by default the current directory)"`
@@ -47,5 +68,7 @@ type Options struct {
 		HTMLOutput           bool     `yaml:"html_output"`
 		SilentMode           bool     `yaml:"silent_mode"`
 		ExcludeDirs          []string `yaml:"exclude_dirs"`
+		MinMsi               float64  `yaml:"min_msi"`
+		MinCoveredMsi        float64  `yaml:"min_covered_msi"`
 	}
 }

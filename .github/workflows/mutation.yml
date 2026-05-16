@@ -2,6 +2,8 @@ name: Mutation Testing
 
 on:
   push:
+    branches: [master, feature/parity]
+  pull_request:
     branches: [master]
 
 permissions:
@@ -10,7 +12,7 @@ permissions:
 jobs:
   mutation:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -27,15 +29,22 @@ jobs:
         #   internal/annotation - build errors prevent compilation
         #   internal/importing  - relies on GOPATH/src layout; fails in module mode
         #   internal/parser     - uses deprecated go/loader; excluded until migration
-        # The tool always exits 0 regardless of mutation score, so this step is
-        # informational. Check report.json for the full breakdown.
+        # --coverage generates a profile before mutation to compute covered-code MSI
+        # and marks mutants in untested code as "not covered" rather than running them.
+        # --min-msi and --min-covered-msi enforce quality gates.
         run: |
           go-mutesting \
             --exec-timeout 30 \
+            --coverage \
+            --min-msi 40 \
+            --min-covered-msi 60 \
             github.com/avito-tech/go-mutesting/mutator/arithmetic \
             github.com/avito-tech/go-mutesting/mutator/branch \
             github.com/avito-tech/go-mutesting/mutator/expression \
             github.com/avito-tech/go-mutesting/mutator/loop \
             github.com/avito-tech/go-mutesting/mutator/numbers \
             github.com/avito-tech/go-mutesting/mutator/statement \
-            github.com/avito-tech/go-mutesting/internal/filter
+            github.com/avito-tech/go-mutesting/internal/filter \
+            github.com/avito-tech/go-mutesting/internal/coverage \
+            github.com/avito-tech/go-mutesting/internal/gitdiff \
+            github.com/avito-tech/go-mutesting/internal/models
