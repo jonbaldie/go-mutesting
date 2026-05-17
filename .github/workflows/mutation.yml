@@ -19,6 +19,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Vulnerability scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
       - name: Build go-mutesting
         run: go build -o /usr/local/bin/go-mutesting ./cmd/go-mutesting
 

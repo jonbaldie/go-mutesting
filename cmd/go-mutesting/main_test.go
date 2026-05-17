@@ -85,14 +85,14 @@ func TestMainMinMsiFail(t *testing.T) {
 }
 
 func TestMainMinCoveredMsiNoProfile(t *testing.T) {
-	// Without coverage analysis NotCoveredCount==0 → covered MSI is 0.
-	// A --min-covered-msi>0 gate should trigger.
+	// Without --coverage the gate cannot be evaluated and must fail with a
+	// clear message rather than silently comparing against 0.
 	testMain(
 		t,
 		"../../example",
 		[]string{"--debug", "--exec-timeout", "1", "--min-covered-msi", "90"},
 		returnMsiThresholdNotMet,
-		"Covered MSI",
+		"Covered MSI cannot be checked",
 	)
 }
 

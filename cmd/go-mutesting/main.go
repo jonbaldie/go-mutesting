@@ -234,7 +234,7 @@ MUTATOR:
 
 	var execs []string
 	if opts.Exec.Exec != "" {
-		execs = strings.Split(opts.Exec.Exec, " ")
+		execs = strings.Fields(opts.Exec.Exec)
 	}
 
 	report := &models.Report{}
@@ -467,12 +467,13 @@ MUTATOR:
 		fmt.Println("Cannot do a mutation testing summary since no exec command was executed.")
 	}
 
-	err = reportmaker.MakeJSONReport(*report)
-	if err != nil {
-		return exitError(err.Error())
+	if opts.General.Config == "" || opts.Config.JSONOutput {
+		err = reportmaker.MakeJSONReport(*report)
+		if err != nil {
+			return exitError(err.Error())
+		}
+		console.Verbose(opts, "Save report into %q", models.ReportFileName)
 	}
-
-	console.Verbose(opts, "Save report into %q", models.ReportFileName)
 
 	if opts.Logger.SummaryJSON {
 		if err = reportmaker.MakeSummaryJSONReport(report.Stats); err != nil {
@@ -514,7 +515,9 @@ func printSummary(report *models.Report) {
 		report.Stats.SkippedCount,
 		report.Stats.TotalMutantsCount,
 	)
-	fmt.Printf("The covered-code mutation score is %.2f%%\n", covMsiPct)
+	if report.HasCoverage {
+		fmt.Printf("The covered-code mutation score is %.2f%%\n", covMsiPct)
+	}
 
 	if len(report.MutatorStats) > 0 {
 		fmt.Println("\nPer-mutator breakdown:")
@@ -598,9 +601,14 @@ func checkQualityGates(opts *models.Options, report *models.Report, bl *baseline
 		fmt.Fprintf(os.Stderr, "MSI %.2f%% is below minimum required %.2f%%\n", msiPct, minMsi)
 		failed = true
 	}
-	if minCoveredMsi >= 0 && covMsiPct < minCoveredMsi {
-		fmt.Fprintf(os.Stderr, "Covered MSI %.2f%% is below minimum required %.2f%%\n", covMsiPct, minCoveredMsi)
-		failed = true
+	if minCoveredMsi > 0 {
+		if !report.HasCoverage {
+			fmt.Fprintf(os.Stderr, "Covered MSI cannot be checked: --coverage was not enabled (score is always 0 without a profile)\n")
+			failed = true
+		} else if covMsiPct < minCoveredMsi {
+			fmt.Fprintf(os.Stderr, "Covered MSI %.2f%% is below minimum required %.2f%%\n", covMsiPct, minCoveredMsi)
+			failed = true
+		}
 	}
 	if failed {
 		return returnMsiThresholdNotMet
@@ -740,7 +748,7 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex) {
 
 	if notCovered {
 		out := fmt.Sprintf("NOT COVERED %s\n", msg)
-		if !opts.Config.SilentMode {
+		if !opts.Config.SilentMode && !opts.General.Quiet {
 			console.PrintSkip(out)
 		}
 		mutant.ProcessOutput = out
