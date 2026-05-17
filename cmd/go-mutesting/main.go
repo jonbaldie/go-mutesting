@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -15,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -115,6 +117,19 @@ func exitError(format string, args ...interface{}) int {
 type mutatorItem struct {
 	Name    string
 	Mutator mutator.Mutator
+}
+
+// execJob carries everything a parallel worker needs to test one mutation.
+type execJob struct {
+	opts            *models.Options
+	pkg             *types.Package
+	originalFile    string
+	mutationFile    string
+	mutant          models.Mutant
+	absFile         string
+	coverProfile    *coverage.Profile
+	gitChangedLines gitdiff.ChangedLines
+	execs           []string
 }
 
 func mainCmd(args []string) int {
@@ -279,6 +294,34 @@ MUTATOR:
 		return prof
 	}
 
+	// Set up the parallel worker pool for mutation execution.
+	// Custom --exec scripts may not be thread-safe, so force 1 worker when set.
+	numWorkers := opts.General.Workers
+	if numWorkers <= 0 {
+		numWorkers = runtime.NumCPU()
+	}
+	if len(execs) > 0 {
+		numWorkers = 1
+	}
+	console.Verbose(opts, "Running with %d parallel worker(s)", numWorkers)
+
+	var (
+		jobs  chan execJob
+		jobWg sync.WaitGroup
+	)
+	if !opts.Exec.NoExec {
+		jobs = make(chan execJob, numWorkers*2)
+		for i := 0; i < numWorkers; i++ {
+			jobWg.Add(1)
+			go func() {
+				defer jobWg.Done()
+				for job := range jobs {
+					runExecJob(job, report, &reportMu)
+				}
+			}()
+		}
+	}
+
 	for _, importPkg := range pkgs {
 		coverProfile := coverProfileForPkg(importPkg.Files)
 		if coverProfile != nil {
@@ -332,13 +375,19 @@ MUTATOR:
 
 				for _, f := range astutil.Functions(src) {
 					if m.MatchString(f.Name.Name) {
-						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines)
+						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs)
 					}
 				}
 			} else {
-				_ = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines)
+				_ = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs)
 			}
 		}
+	}
+
+	// Wait for all parallel workers to finish before computing the report.
+	if jobs != nil {
+		close(jobs)
+		jobWg.Wait()
 	}
 
 	if !opts.General.DoNotRemoveTmpFolder {
@@ -507,6 +556,7 @@ func mutate(
 	absFile string,
 	coverProfile *coverage.Profile,
 	gitChangedLines gitdiff.ChangedLines,
+	jobs chan<- execJob,
 ) int {
 	for _, m := range mutators {
 		console.Debug(opts, "Mutator %s", m.Name)
@@ -517,7 +567,6 @@ func mutate(
 
 		for {
 			_, ok := <-changed
-
 			if !ok {
 				break
 			}
@@ -544,102 +593,28 @@ func mutate(
 				mu.Unlock()
 			} else if duplicate {
 				console.Debug(opts, "%q is a duplicate, we ignore it", mutationFile)
-
 				mu.Lock()
 				stats.Stats.DuplicatedCount++
 				mu.Unlock()
 			} else {
 				console.Debug(opts, "Save mutation into %q with checksum %s", mutationFile, checksum)
-
-				if !opts.Exec.NoExec {
-					// Git diff filter: skip mutations not on changed lines.
-					// Run a fast local diff to get the mutated line number before
-					// invoking go test (which is expensive).
-					if gitChangedLines != nil {
-						diffOut, _ := exec.Command("diff", "--label=Original", "--label=New", "-u", originalFile, mutationFile).CombinedOutput()
-						lineNum := int(parser.FindOriginalStartLine(diffOut))
-						if !gitdiff.IsLineChanged(gitChangedLines, absFile, lineNum) {
-							console.Debug(opts, "Skip %q at line %d (not in git diff)", mutationFile, lineNum)
-							goto advanceMutation
-						}
+				if jobs != nil {
+					jobs <- execJob{
+						opts:            opts,
+						pkg:             pkg,
+						originalFile:    originalFile,
+						mutationFile:    mutationFile,
+						mutant:          mutant,
+						absFile:         absFile,
+						coverProfile:    coverProfile,
+						gitChangedLines: gitChangedLines,
+						execs:           execs,
 					}
-
-					execExitCode := mutateExec(opts, pkg, originalFile, mutationFile, execs, &mutant)
-
-					console.Debug(opts, "Exited with %d", execExitCode)
-
-					mutatedSourceCode, err := os.ReadFile(mutationFile)
-					if err != nil {
-						log.Fatal(err)
-					}
-					mutant.Mutator.MutatedSourceCode = string(mutatedSourceCode)
-
-					// Check coverage before recording result.
-					startLine := mutant.Mutator.OriginalStartLine
-					notCovered := coverProfile != nil && startLine > 0 && !coverProfile.IsCovered(absFile, int(startLine))
-
-					// Build a human-readable location string: relative source path + line.
-					loc := mutant.Mutator.OriginalFilePath
-					if rel, err := filepath.Rel(".", loc); err == nil {
-						loc = filepath.ToSlash(rel)
-					}
-					if mutant.Mutator.OriginalStartLine > 0 {
-						loc = fmt.Sprintf("%s:%d", loc, mutant.Mutator.OriginalStartLine)
-					}
-					msg := fmt.Sprintf("%s (%s)", loc, mutant.Mutator.MutatorName)
-
-					mu.Lock()
-					if notCovered {
-						out := fmt.Sprintf("NOT COVERED %s\n", msg)
-						if !opts.Config.SilentMode {
-							console.PrintSkip(out)
-						}
-						mutant.ProcessOutput = out
-						stats.NotCovered = append(stats.NotCovered, mutant)
-						stats.Stats.NotCoveredCount++
-					} else {
-						switch execExitCode {
-						case 0: // Tests failed → mutation killed
-							out := fmt.Sprintf("PASS %s\n", msg)
-							if !opts.Config.SilentMode && !opts.General.Quiet {
-								console.PrintPass(out)
-							}
-							mutant.ProcessOutput = out
-							stats.Killed = append(stats.Killed, mutant)
-							stats.Stats.KilledCount++
-						case 1: // Tests passed → mutation escaped
-							out := fmt.Sprintf("FAIL %s\n", msg)
-							if !opts.Config.SilentMode {
-								console.PrintFail(out)
-							}
-							mutant.ProcessOutput = out
-							stats.Escaped = append(stats.Escaped, mutant)
-							stats.Stats.EscapedCount++
-						case 2: // Did not compile → skip
-							out := fmt.Sprintf("SKIP %s\n", msg)
-							if !opts.Config.SilentMode && !opts.General.Quiet {
-								console.PrintSkip(out)
-							}
-							mutant.ProcessOutput = out
-							stats.Stats.SkippedCount++
-						default:
-							out := fmt.Sprintf("UNKNOWN exit code for %s\n", msg)
-							if !opts.Config.SilentMode {
-								console.PrintUnknown(out)
-							}
-							mutant.ProcessOutput = out
-							stats.Errored = append(stats.Errored, mutant)
-							stats.Stats.ErrorCount++
-						}
-					}
-					mu.Unlock()
 				}
 			}
 
-		advanceMutation:
+			// Release the MutateWalk goroutine to reset the AST and advance.
 			changed <- true
-
-			// Ignore original state
 			<-changed
 			changed <- true
 
@@ -648,6 +623,93 @@ func mutate(
 	}
 
 	return mutationID
+}
+
+// runExecJob executes a single mutation job in a worker goroutine.
+// It applies the git-diff filter, runs go test via overlay (or --exec),
+// checks coverage, and records the result under mu.
+func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex) {
+	opts := job.opts
+	mutant := job.mutant
+
+	// Git diff filter: skip mutations not on changed lines.
+	if job.gitChangedLines != nil {
+		diffOut, _ := exec.Command("diff", "--label=Original", "--label=New", "-u", job.originalFile, job.mutationFile).CombinedOutput()
+		lineNum := int(parser.FindOriginalStartLine(diffOut))
+		if !gitdiff.IsLineChanged(job.gitChangedLines, job.absFile, lineNum) {
+			console.Debug(opts, "Skip %q at line %d (not in git diff)", job.mutationFile, lineNum)
+			return
+		}
+	}
+
+	execExitCode := mutateExec(opts, job.pkg, job.originalFile, job.mutationFile, job.execs, &mutant)
+
+	console.Debug(opts, "Exited with %d", execExitCode)
+
+	mutatedSourceCode, err := os.ReadFile(job.mutationFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	mutant.Mutator.MutatedSourceCode = string(mutatedSourceCode)
+
+	startLine := mutant.Mutator.OriginalStartLine
+	notCovered := job.coverProfile != nil && startLine > 0 && !job.coverProfile.IsCovered(job.absFile, int(startLine))
+
+	loc := mutant.Mutator.OriginalFilePath
+	if rel, err := filepath.Rel(".", loc); err == nil {
+		loc = filepath.ToSlash(rel)
+	}
+	if mutant.Mutator.OriginalStartLine > 0 {
+		loc = fmt.Sprintf("%s:%d", loc, mutant.Mutator.OriginalStartLine)
+	}
+	msg := fmt.Sprintf("%s (%s)", loc, mutant.Mutator.MutatorName)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if notCovered {
+		out := fmt.Sprintf("NOT COVERED %s\n", msg)
+		if !opts.Config.SilentMode {
+			console.PrintSkip(out)
+		}
+		mutant.ProcessOutput = out
+		stats.NotCovered = append(stats.NotCovered, mutant)
+		stats.Stats.NotCoveredCount++
+	} else {
+		switch execExitCode {
+		case 0: // Tests failed → mutation killed
+			out := fmt.Sprintf("PASS %s\n", msg)
+			if !opts.Config.SilentMode && !opts.General.Quiet {
+				console.PrintPass(out)
+			}
+			mutant.ProcessOutput = out
+			stats.Killed = append(stats.Killed, mutant)
+			stats.Stats.KilledCount++
+		case 1: // Tests passed → mutation escaped
+			out := fmt.Sprintf("FAIL %s\n", msg)
+			if !opts.Config.SilentMode {
+				console.PrintFail(out)
+			}
+			mutant.ProcessOutput = out
+			stats.Escaped = append(stats.Escaped, mutant)
+			stats.Stats.EscapedCount++
+		case 2: // Did not compile → skip
+			out := fmt.Sprintf("SKIP %s\n", msg)
+			if !opts.Config.SilentMode && !opts.General.Quiet {
+				console.PrintSkip(out)
+			}
+			mutant.ProcessOutput = out
+			stats.Stats.SkippedCount++
+		default:
+			out := fmt.Sprintf("UNKNOWN exit code for %s\n", msg)
+			if !opts.Config.SilentMode {
+				console.PrintUnknown(out)
+			}
+			mutant.ProcessOutput = out
+			stats.Errored = append(stats.Errored, mutant)
+			stats.Stats.ErrorCount++
+		}
+	}
 }
 
 func mutateExec(
@@ -675,29 +737,39 @@ func mutateExec(
 		}
 		if execExitCode != 0 && execExitCode != 1 {
 			fmt.Printf("%s\n", diff)
-
 			panic("Could not execute diff on mutation file")
 		}
 
-		defer func() {
-			_ = os.Rename(file+".tmp", file)
-		}()
+		// Build a per-mutation overlay JSON so go test sees the mutated file
+		// without touching the real source. Each parallel worker creates its own
+		// overlay file, so there are no conflicts.
+		absOrig, _ := filepath.Abs(file)
+		absMut, _ := filepath.Abs(mutationFile)
+		overlayData, _ := json.Marshal(struct {
+			Replace map[string]string `json:"Replace"`
+		}{Replace: map[string]string{absOrig: absMut}})
 
-		err = os.Rename(file, file+".tmp")
+		overlayFile, err := os.CreateTemp("", "go-mutesting-overlay-*.json")
 		if err != nil {
 			panic(err)
 		}
-		err = osutil.CopyFile(mutationFile, file)
-		if err != nil {
+		if _, err := overlayFile.Write(overlayData); err != nil {
+			overlayFile.Close()
+			os.Remove(overlayFile.Name())
 			panic(err)
 		}
+		overlayFile.Close()
+		defer os.Remove(overlayFile.Name())
 
 		pkgName := pkg.Path()
 		if opts.Test.Recursive {
 			pkgName += "/..."
 		}
 
-		goTestCmd := exec.Command("go", "test", "-timeout", fmt.Sprintf("%ds", opts.Exec.Timeout), pkgName)
+		goTestCmd := exec.Command("go", "test",
+			"-overlay="+overlayFile.Name(),
+			"-timeout", fmt.Sprintf("%ds", opts.Exec.Timeout),
+			pkgName)
 		goTestCmd.Env = os.Environ()
 
 		test, err := goTestCmd.CombinedOutput()
@@ -720,19 +792,16 @@ func mutateExec(
 			if !opts.Config.SilentMode {
 				console.PrintDiff(diff)
 			}
-
 			execExitCode = 1
 		case 1: // Tests failed → PASS (mutation killed)
 			if opts.General.Debug {
 				console.PrintDiff(diff)
 			}
-
 			execExitCode = 0
 		case 2: // Did not compile → SKIP
 			if opts.General.Verbose {
 				fmt.Println("Mutation did not compile")
 			}
-
 			if opts.General.Debug {
 				console.PrintDiff(diff)
 			}
