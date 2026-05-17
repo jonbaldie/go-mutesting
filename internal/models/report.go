@@ -8,13 +8,13 @@ var ReportHTMLFileName string = "go-mutesting-report.html"
 
 // Report holds the complete mutation testing result.
 type Report struct {
-	Stats          Stats          `json:"stats"`
-	MutatorStats   []MutatorStats `json:"mutatorStats,omitempty"`
-	Escaped        []Mutant       `json:"escaped"`
-	Timeouted      []Mutant       `json:"timeouted"`
-	Killed         []Mutant       `json:"killed"`
-	Errored        []Mutant       `json:"errored"`
-	NotCovered     []Mutant       `json:"notCovered,omitempty"`
+	Stats        Stats          `json:"stats"`
+	MutatorStats []MutatorStats `json:"mutatorStats,omitempty"`
+	Escaped      []Mutant       `json:"escaped"`
+	Timeouted    []Mutant       `json:"timeouted"`
+	Killed       []Mutant       `json:"killed"`
+	Errored      []Mutant       `json:"errored"`
+	NotCovered   []Mutant       `json:"notCovered,omitempty"`
 	// HasCoverage is true when a coverage profile was loaded before mutation.
 	// It distinguishes "coverage was run and all code is covered" (NotCoveredCount==0
 	// but CoveredCodeMsi is meaningful) from "coverage was never run".

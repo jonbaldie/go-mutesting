@@ -68,7 +68,7 @@ func checkArguments(args []string, opts *models.Options) (bool, int) {
 	if (opts.General.Help || len(args) == 0) && !completion {
 		p.WriteHelp(os.Stdout)
 
-		return true, returnHelp
+		return true, returnOk // exit 0 is conventional for --help
 	} else if opts.Mutator.ListMutators {
 		for _, name := range mutator.List() {
 			fmt.Println(name)
@@ -388,13 +388,27 @@ func printSummary(report *models.Report) {
 }
 
 // printGitHubAnnotations writes escaped mutants as GitHub Actions ::warning
-// annotations so they appear inline in PR diffs.
+// annotations so they appear inline in PR diffs. File paths are made relative
+// to the repo root so GitHub can match them against the diff.
 func printGitHubAnnotations(report *models.Report) {
+	repoRoot := ""
+	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
+		repoRoot = strings.TrimSpace(string(out))
+	}
+
 	for _, m := range report.Escaped {
-		fmt.Printf("::warning file=%s,line=%d::Mutant escaped: %s\n",
-			m.Mutator.OriginalFilePath,
+		filePath := filepath.ToSlash(m.Mutator.OriginalFilePath)
+		if repoRoot != "" {
+			if rel, err := filepath.Rel(repoRoot, m.Mutator.OriginalFilePath); err == nil {
+				filePath = filepath.ToSlash(rel)
+			}
+		}
+		fmt.Printf("::warning file=%s,line=%d,title=Mutant escaped (%s)::Escaped mutation at %s:%d — add a test to kill it\n",
+			filePath,
 			m.Mutator.OriginalStartLine,
 			m.Mutator.MutatorName,
+			filePath,
+			m.Mutator.OriginalStartLine,
 		)
 	}
 }
@@ -521,7 +535,15 @@ func mutate(
 					startLine := mutant.Mutator.OriginalStartLine
 					notCovered := coverProfile != nil && startLine > 0 && !coverProfile.IsCovered(absFile, int(startLine))
 
-					msg := fmt.Sprintf("%q with checksum %s", mutationFile, checksum)
+					// Build a human-readable location string: relative source path + line.
+					loc := mutant.Mutator.OriginalFilePath
+					if rel, err := filepath.Rel(".", loc); err == nil {
+						loc = filepath.ToSlash(rel)
+					}
+					if mutant.Mutator.OriginalStartLine > 0 {
+						loc = fmt.Sprintf("%s:%d", loc, mutant.Mutator.OriginalStartLine)
+					}
+					msg := fmt.Sprintf("%s (%s)", loc, mutant.Mutator.MutatorName)
 
 					mu.Lock()
 					if notCovered {
