@@ -4,7 +4,7 @@ go-mutesting is a mutation testing tool for Go. It tweaks your code in small way
 
 ## This fork
 
-This is an actively maintained fork of the unmaintained [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting) upstream. Key additions:
+This is an actively maintained fork of [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting). Key additions:
 
 | Feature | Flag |
 | :--- | :--- |
