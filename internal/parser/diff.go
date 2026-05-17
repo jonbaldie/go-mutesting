@@ -45,10 +45,12 @@ func ParseDiffOutput(diff string) []int64 {
 }
 
 // FindOriginalStartLine attempts to find the original line number where a mutation occurred.
+// For multi-hunk diffs the first hunk's start line is returned — it is the earliest affected
+// line in the original file and the most representative location for coverage and diff-filter checks.
 func FindOriginalStartLine(diff []byte) int64 {
 	changedLines := ParseDiffOutput(string(diff))
 
-	if len(changedLines) == 0 || len(changedLines) > 1 {
+	if len(changedLines) == 0 {
 		return fallbackLine
 	}
 

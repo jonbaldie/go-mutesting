@@ -22,9 +22,37 @@ All packages pass. `internal/importing` and `internal/parser` were once broken i
 | `internal/filter/` | Annotation and skip filters |
 | `internal/coverage/` | Coverage profile parsing for `--coverage` |
 
-## Self-mutation
+## Self-mutation and quality gates
 
-`.github/workflows/mutation.yml` runs go-mutesting on itself. Gates: MSI ≥ 75%, covered-MSI ≥ 80%.
+`.github/workflows/mutation.yml` runs go-mutesting on itself with two hard gates:
+
+| Gate | Threshold | Flag |
+| :--- | :--- | :--- |
+| Overall MSI | ≥ 75% | `--min-msi 75` |
+| Covered-code MSI | ≥ 80% | `--min-covered-msi 80` |
+
+**Run the gates locally before committing.** Build first, then run against the same package list CI uses:
+
+```bash
+go build -o /tmp/go-mutesting ./cmd/go-mutesting
+/tmp/go-mutesting \
+  --exec-timeout 30 --coverage --min-msi 75 --min-covered-msi 80 \
+  github.com/jonbaldie/go-mutesting/mutator/arithmetic \
+  github.com/jonbaldie/go-mutesting/mutator/branch \
+  github.com/jonbaldie/go-mutesting/mutator/concurrency \
+  github.com/jonbaldie/go-mutesting/mutator/conditional \
+  github.com/jonbaldie/go-mutesting/mutator/expression \
+  github.com/jonbaldie/go-mutesting/mutator/loop \
+  github.com/jonbaldie/go-mutesting/mutator/numbers \
+  github.com/jonbaldie/go-mutesting/mutator/select \
+  github.com/jonbaldie/go-mutesting/mutator/statement \
+  github.com/jonbaldie/go-mutesting/internal/filter \
+  github.com/jonbaldie/go-mutesting/internal/coverage \
+  github.com/jonbaldie/go-mutesting/internal/gitdiff \
+  github.com/jonbaldie/go-mutesting/internal/models
+```
+
+Exit code 4 means the gate failed (escaped mutants). Exit code 0 means all gates passed.
 
 ## Conventions
 

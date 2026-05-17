@@ -40,7 +40,7 @@ func TestParseDiffOutput(t *testing.T) {
 			expected: 17,
 		},
 		{
-			name: "multiple changes should return fallback",
+			name: "multiple changes returns first hunk start line",
 			input: `--- Original
 					+++ New
 					@@ -14,7 +14,7 @@
@@ -48,19 +48,19 @@ func TestParseDiffOutput(t *testing.T) {
 							jjj := 6
 					-       slog.Info(strconv.Itoa(jjj))
 					+       _, _, _ = slog.Info, strconv.Itoa, jjj
-					 
+
 							fmt.Println("foo")
 					 }
 					@@ -20,7 +20,7 @@
 					}
- 
+
 					func doo() {
 					-       ddd := 6
 					+       ddd := 5
 							slog.Info(strconv.Itoa(ddd))
 							fmt.Println("doo")
 					 }`,
-			expected: 0,
+			expected: 17,
 		},
 		{
 			name:     "empty input",

@@ -535,7 +535,13 @@ func mutate(
 			mutationFile := fmt.Sprintf("%s.%d", mutatedFile, mutationID)
 			checksum, duplicate, err := saveAST(mutationBlackList, mutationFile, fset, src)
 			if err != nil {
-				fmt.Printf("INTERNAL ERROR %s\n", err.Error())
+				out := fmt.Sprintf("INTERNAL ERROR %s\n", err.Error())
+				fmt.Printf("%s", out)
+				mutant.ProcessOutput = out
+				mu.Lock()
+				stats.Errored = append(stats.Errored, mutant)
+				stats.Stats.ErrorCount++
+				mu.Unlock()
 			} else if duplicate {
 				console.Debug(opts, "%q is a duplicate, we ignore it", mutationFile)
 
