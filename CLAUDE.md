@@ -54,6 +54,18 @@ go build -o /tmp/go-mutesting ./cmd/go-mutesting
 
 Exit code 4 means the gate failed (escaped mutants). Exit code 0 means all gates passed.
 
+## Shipping workflow
+
+Follow these steps in order when landing a change:
+
+1. **Build and test locally** — `go build ./...` and `go test ./...`. Restore `example/example.go` after.
+2. **Run quality gates** — use the command in the section below. Exit 0 = pass, exit 4 = escaped mutants.
+3. **Manual smoke test** — build the binary and actually run it against a real package. Check that user-facing output looks right. Do not skip this.
+4. **Commit and push** — fix forward only. No `--force-push` and no `--amend` on published commits. If a hook or check fails, fix it in a new commit.
+5. **Watch CI** — wait for the Actions run to go green before merging into master.
+6. **Merge to master** — then push master.
+7. **Tag and release** — pick the next semver tag. Create a GitHub release page: one short paragraph, plain English a high-schooler can follow, no jargon. List what changed. End with the install command.
+
 ## Conventions
 
 - Quality gates exit with code 4 (not 1) so CI can distinguish "escaped mutants" from "tool error".
