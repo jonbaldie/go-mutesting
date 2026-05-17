@@ -208,6 +208,37 @@ These mutations are almost always irrelevant because:
 
 The filter prevents mutations in make() arguments.
 
+### <a name="quality-gates"></a>Quality gates
+
+Use `--min-msi` and `--min-covered-msi` to fail CI if mutation scores drop below a threshold. The tool exits with code 4 when a gate isn't met.
+
+```bash
+go-mutesting --min-msi 60 --min-covered-msi 80 ./...
+```
+
+Add `--coverage` to generate a coverage profile first. Mutants on uncovered lines are marked "not covered" and excluded from the covered-MSI denominator (so you're not penalised for code your tests don't reach at all).
+
+```bash
+go-mutesting --coverage --min-msi 50 --min-covered-msi 75 ./...
+```
+
+The final summary includes a per-mutator breakdown so you can see which mutation types your tests are weakest against.
+
+### <a name="git-diff"></a>Git diff filtering (CI mode)
+
+`--git-diff-lines` limits mutation to lines changed since a given git ref. Combine it with `--ignore-msi-with-no-mutations` so the gate passes cleanly on PRs that touch no mutable code.
+
+```bash
+go-mutesting \
+  --git-diff-lines \
+  --git-diff-base origin/main \
+  --ignore-msi-with-no-mutations \
+  --min-msi 80 \
+  ./...
+```
+
+Add `--logger-github` to emit escaped mutants as GitHub Actions `::warning` annotations, so they show up inline on the PR diff.
+
 ### <a name="mutation-annotations"></a>Mutation control via annotations
 
 To further reduce false positives and provide granular control over mutations, 
@@ -413,6 +444,14 @@ Name	               | Original | Mutated  |
 | LessThan             | <        | <=       |
 | GreaterThanOrEqualTo | \>=      | \>       |
 | LessThanOrEqualTo    | <=       | <        |
+
+#### expression/logical
+Swaps `&&` and `||` operators.
+
+Name	      | Original | Mutated
+| :--------- | :------- | :------
+| LogicalAnd | &&       | &#124;&#124;
+| LogicalOr  | &#124;&#124; | &&
 
 #### expression/remove
 Searches for `&&` and <code>\|\|</code> operators and makes each term of the operator irrelevant by using `true` or `false` as replacements.
