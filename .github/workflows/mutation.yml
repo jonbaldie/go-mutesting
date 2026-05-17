@@ -39,10 +39,12 @@ jobs:
             --min-covered-msi 80 \
             github.com/jonbaldie/go-mutesting/mutator/arithmetic \
             github.com/jonbaldie/go-mutesting/mutator/branch \
+            github.com/jonbaldie/go-mutesting/mutator/concurrency \
             github.com/jonbaldie/go-mutesting/mutator/conditional \
             github.com/jonbaldie/go-mutesting/mutator/expression \
             github.com/jonbaldie/go-mutesting/mutator/loop \
             github.com/jonbaldie/go-mutesting/mutator/numbers \
+            github.com/jonbaldie/go-mutesting/mutator/select \
             github.com/jonbaldie/go-mutesting/mutator/statement \
             github.com/jonbaldie/go-mutesting/internal/filter \
             github.com/jonbaldie/go-mutesting/internal/coverage \

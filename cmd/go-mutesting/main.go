@@ -39,10 +39,12 @@ import (
 	"github.com/jonbaldie/go-mutesting/mutator"
 	_ "github.com/jonbaldie/go-mutesting/mutator/arithmetic"
 	_ "github.com/jonbaldie/go-mutesting/mutator/branch"
+	_ "github.com/jonbaldie/go-mutesting/mutator/concurrency"
 	_ "github.com/jonbaldie/go-mutesting/mutator/conditional"
 	_ "github.com/jonbaldie/go-mutesting/mutator/expression"
 	_ "github.com/jonbaldie/go-mutesting/mutator/loop"
 	_ "github.com/jonbaldie/go-mutesting/mutator/numbers"
+	_ "github.com/jonbaldie/go-mutesting/mutator/select"
 	_ "github.com/jonbaldie/go-mutesting/mutator/statement"
 )
 
