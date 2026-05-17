@@ -1,3 +1,27 @@
+// Package mutator defines the Mutator function type and the registration
+// mechanism used by all built-in and third-party mutation operators.
+//
+// Implementing a custom operator requires three steps:
+//
+//  1. Write a function with the Mutator signature.
+//  2. Call Register from an init() function so it is available at startup.
+//  3. Import your package (blank import) in a fork of cmd/go-mutesting/main.go.
+//
+// Example:
+//
+//	func init() {
+//	    mutator.Register("mypkg/flip-sign", flipSign)
+//	}
+//
+//	func flipSign(_ *types.Package, _ *types.Info, node ast.Node) []mutator.Mutation {
+//	    n, ok := node.(*ast.UnaryExpr)
+//	    if !ok || n.Op != token.SUB {
+//	        return nil
+//	    }
+//	    return []mutator.Mutation{
+//	        {Change: func() { n.Op = token.ADD }, Reset: func() { n.Op = token.SUB }},
+//	    }
+//	}
 package mutator
 
 import (

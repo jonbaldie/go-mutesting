@@ -1,4 +1,4 @@
-# go-mutesting [![Go Reference](https://pkg.go.dev/badge/github.com/jonbaldie/go-mutesting/v2.svg)](https://pkg.go.dev/github.com/jonbaldie/go-mutesting/v2) [![Mutation Testing](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml/badge.svg)](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml)
+# go-mutesting [![Go Reference](https://pkg.go.dev/badge/github.com/jonbaldie/go-mutesting/v2.svg)](https://pkg.go.dev/github.com/jonbaldie/go-mutesting/v2) [![Mutation Testing](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml/badge.svg)](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Go 1.25+](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev)
 
 go-mutesting is a mutation testing tool for Go. It tweaks your code in small ways and checks whether your tests catch the change. If they don't, that's a gap in your test suite worth closing.
 
@@ -66,6 +66,8 @@ We know that the code originates from a remove method which means that the mutat
   - [Baseline — only fail on new escapes](#baseline)
   - [LLM-ready report](#agentic-json)
   - [Live progress](#progress)
+  - [CI integration (GitHub Actions)](#ci-integration)
+  - [JSON output schemas](#json-outputs)
   - [Mutation control via annotations](#mutation-annotations)
 - [How do I write my own mutation exec commands?](#write-mutation-exec-commands)
 - [Which mutators are implemented?](#list-of-mutators)
@@ -289,6 +291,115 @@ go-mutesting --logger-agentic-json --quiet ./...
 
 When running in a terminal, go-mutesting shows a live progress line on stderr (killed / escaped / skip counts). It clears automatically before the final summary. It is suppressed in `--verbose`, `--debug`, and silent mode.
 
+### <a name="ci-integration"></a>CI integration (GitHub Actions)
+
+A minimal workflow that gates on mutation score. Adjust thresholds to match your project's baseline.
+
+```yaml
+name: Mutation Testing
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  mutating:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go build -o /tmp/go-mutesting ./cmd/go-mutesting
+      - run: |
+          /tmp/go-mutesting \
+            --coverage \
+            --min-msi 70 \
+            --min-covered-msi 80 \
+            --logger-github \
+            ./...
+```
+
+`--logger-github` emits escaped mutants as `::warning` annotations that appear inline on the PR diff. `--coverage` excludes untested code from the covered-MSI denominator so you aren't penalised for dead code your tests never reach.
+
+**Adopting gates on a legacy codebase**: record the current survivors first, then only fail on new regressions.
+
+```bash
+# Run once to capture current state
+go-mutesting --update-baseline ./...
+git add go-mutesting-baseline.json
+git commit -m "chore: establish mutation baseline"
+
+# CI: only fail if something new escapes
+go-mutesting --baseline go-mutesting-baseline.json --fail-on-escaped ./...
+```
+
+### <a name="json-outputs"></a>JSON output schemas
+
+#### `--logger-summary-json`
+
+Writes `go-mutesting-summary.json` after each run. Useful for badges, dashboards, and downstream scripts.
+
+```json
+{
+  "total": 42,
+  "killed": 35,
+  "escaped": 5,
+  "errored": 0,
+  "skipped": 2,
+  "not_covered": 0,
+  "msi": 0.8333,
+  "covered_msi": 0.9211
+}
+```
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `total` | int | Total mutations generated |
+| `killed` | int | Mutations caught by tests |
+| `escaped` | int | Mutations not caught (test gaps) |
+| `errored` | int | Mutations that caused a build or test error |
+| `skipped` | int | Mutations skipped (blacklisted or annotated) |
+| `not_covered` | int | Mutations on lines with no coverage (requires `--coverage`) |
+| `msi` | float | Mutation Score Indicator: killed / total, range 0–1 |
+| `covered_msi` | float | MSI restricted to covered lines, range 0–1 |
+
+#### `--logger-agentic-json`
+
+Writes `go-mutesting-agentic.json` — a richer payload designed for LLM consumption. Each survived mutant gets a stable ID, the unified diff, surrounding context, nearby test file paths, a plain-English description, and a hint for writing a killing test.
+
+```json
+{
+  "survived_mutants": [
+    {
+      "id": "abc123",
+      "file": "pkg/foo/foo.go",
+      "line": 42,
+      "mutator": "branch/if",
+      "diff": "--- Original\n+++ Mutated\n...",
+      "context_lines": ["func Foo() {", "  if x > 0 {", "  }"],
+      "test_files": ["pkg/foo/foo_test.go"],
+      "description": "Emptied the true-branch of an if statement on line 42.",
+      "hint": "Add a test that enters the if-branch and asserts on its side-effect."
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `id` | string | Stable hash of file + line + mutator |
+| `file` | string | Path to the mutated file |
+| `line` | int | Line number of the mutation |
+| `mutator` | string | Mutator name (e.g. `branch/if`) |
+| `diff` | string | Unified diff of original vs mutated |
+| `context_lines` | []string | Surrounding source lines for context |
+| `test_files` | []string | Test files in the same package |
+| `description` | string | Human-readable description of the mutation |
+| `hint` | string | Suggestion for a test that would kill this mutant |
+
+Feed `go-mutesting-agentic.json` to an LLM to get targeted test suggestions for each gap.
+
 ### <a name="mutation-annotations"></a>Mutation control via annotations
 
 To further reduce false positives and provide granular control over mutations, 
@@ -408,6 +519,12 @@ Examples for exec commands can be found in the [scripts](/scripts/exec) director
 | SHRAssignment    | \>>=     | =       |
 | AndNotAssignment | &^=      | =       |
 
+#### arithmetic/negate
+Inverts unary minus expressions. Catches code that relies on a sign flip that tests don't verify.
+
+| Name          | Original | Mutated |
+| :------------ | :------- | :------ |
+| InvertNegation | -x      | +x      |
 
 ### Loop mutators
 #### loop/break
@@ -442,6 +559,28 @@ Name	           | Original | Mutated  |
 | :--------------- | :------- | :------- |
 | DecrementInteger | 100      | 99       |
 | DecrementFloat   | 10.1     | 9.1      |
+
+#### numbers/float-negate
+Replaces a float literal with its negation. Catches missing sign-handling in arithmetic.
+
+| Name        | Original | Mutated |
+| :---------- | :------- | :------ |
+| FloatNegate | 3.14     | -3.14   |
+
+### Concurrency mutators
+#### concurrency/goroutine-remove
+Removes the `go` keyword from goroutine launches, turning concurrent calls into synchronous ones. Kills tests that rely on goroutines running independently.
+
+| Name            | Original       | Mutated   |
+| :-------------- | :------------- | :-------- |
+| GoroutineRemove | go f()         | f()       |
+
+### Select mutators
+#### select/case-remove
+Empties the body of each `case` branch in a `select` statement, one at a time.
+
+#### select/default-remove
+Empties the `default` branch of a `select` statement.
 
 ### Conditional mutators
 #### conditional/negated
@@ -488,9 +627,30 @@ Name	      | Original | Mutated
 #### expression/remove
 Searches for `&&` and <code>\|\|</code> operators and makes each term of the operator irrelevant by using `true` or `false` as replacements.
 
+#### expression/context-nil
+Replaces `context.Context` arguments at call sites with `nil`. Finds code paths that silently ignore a nil context instead of propagating it.
+
+| Name       | Original          | Mutated        |
+| :--------- | :---------------- | :------------- |
+| ContextNil | f(ctx, x)         | f(nil, x)      |
+
+#### expression/error-guard
+Replaces the condition of `if err != nil` and `if err == nil` guards with a boolean constant. Finds error-handling branches that tests never exercise.
+
+| Name       | Original          | Mutated         |
+| :--------- | :---------------- | :-------------- |
+| ErrNotNil  | if err != nil     | if false        |
+| ErrIsNil   | if err == nil     | if true         |
+
 ### Statement mutators
 #### statement/remove
 Removes assignment, increment, decrement and expression statements.
+
+#### statement/remove-self-assign
+Removes self-assignment statements (`a = a`). These are typically dead code; this mutator confirms the surrounding tests don't accidentally rely on them.
+
+#### statement/return
+Replaces each return value with the zero value for its type (`false` for bool, `0` for int, `""` for string, `nil` for pointers and interfaces). Uses `go/types` for type resolution. Finds functions whose return values tests never validate.
 
 ## Config file
 

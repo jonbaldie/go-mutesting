@@ -11,6 +11,6 @@ func TestMutatorNumbersDecrementer(t *testing.T) {
 		t,
 		MutatorNumbersDecrementer,
 		"../../testdata/numbers/decrementer.go",
-		2,
+		3,
 	)
 }
