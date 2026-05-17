@@ -53,6 +53,16 @@ func TestMainMatch(t *testing.T) {
 	)
 }
 
+func TestMainUnknownConfigField(t *testing.T) {
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "1", "--config", "../testdata/configs/configUnknownField.yml.test"},
+		returnError,
+		"Could not parse config file",
+	)
+}
+
 func TestMainSkipWithoutTest(t *testing.T) {
 	testMain(
 		t,

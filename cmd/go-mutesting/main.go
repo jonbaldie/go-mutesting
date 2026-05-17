@@ -107,9 +107,10 @@ func checkArguments(args []string, opts *models.Options) (bool, int) {
 		if err != nil {
 			return true, exitError("Could not read config file: %q", opts.General.Config)
 		}
-		err = yaml.Unmarshal(yamlFile, &opts.Config)
-		if err != nil {
-			return true, exitError("Could not unmarshall config file: %q, %v", opts.General.Config, err)
+		dec := yaml.NewDecoder(bytes.NewReader(yamlFile))
+		dec.KnownFields(true)
+		if err = dec.Decode(&opts.Config); err != nil {
+			return true, exitError("Could not parse config file %q: %v", opts.General.Config, err)
 		}
 	}
 
@@ -340,9 +341,12 @@ MUTATOR:
 	// Live progress on stderr: show running kill/escape/skip counts.
 	// Suppressed when verbose/debug (individual lines already appear) or silent.
 	var stopProgress chan struct{}
+	var progressWg sync.WaitGroup
 	if isTerminal() && !opts.General.Verbose && !opts.General.Debug && !opts.Config.SilentMode && !opts.Exec.NoExec {
 		stopProgress = make(chan struct{})
+		progressWg.Add(1)
 		go func() {
+			defer progressWg.Done()
 			ticker := time.NewTicker(200 * time.Millisecond)
 			defer ticker.Stop()
 			for {
@@ -432,9 +436,11 @@ MUTATOR:
 		jobWg.Wait()
 	}
 
-	// Stop live progress before printing the summary line.
+	// Stop live progress and wait for the goroutine to finish clearing the
+	// line before the summary is printed to stdout.
 	if stopProgress != nil {
 		close(stopProgress)
+		progressWg.Wait()
 	}
 
 	if !opts.General.DoNotRemoveTmpFolder {
