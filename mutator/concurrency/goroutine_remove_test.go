@@ -3,7 +3,7 @@ package concurrency
 import (
 	"testing"
 
-	"github.com/jonbaldie/go-mutesting/test"
+	"github.com/jonbaldie/go-mutesting/v2/test"
 )
 
 func TestMutatorGoroutineRemove(t *testing.T) {

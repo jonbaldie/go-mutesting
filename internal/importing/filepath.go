@@ -20,7 +20,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jonbaldie/go-mutesting/internal/models"
+	"github.com/jonbaldie/go-mutesting/v2/internal/models"
 )
 
 var (

@@ -1,13 +1,13 @@
 package statement
 
 import (
-	"github.com/jonbaldie/go-mutesting/internal/annotation"
+	"github.com/jonbaldie/go-mutesting/v2/internal/annotation"
 	"go/ast"
 	"go/token"
 	"go/types"
 
-	"github.com/jonbaldie/go-mutesting/astutil"
-	"github.com/jonbaldie/go-mutesting/mutator"
+	"github.com/jonbaldie/go-mutesting/v2/astutil"
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 )
 
 func init() {

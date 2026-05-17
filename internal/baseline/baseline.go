@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jonbaldie/go-mutesting/internal/models"
+	"github.com/jonbaldie/go-mutesting/v2/internal/models"
 )
 
 // File is the on-disk baseline format.

@@ -6,8 +6,8 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/jonbaldie/go-mutesting/internal/filter"
-	"github.com/jonbaldie/go-mutesting/mutator"
+	"github.com/jonbaldie/go-mutesting/v2/internal/filter"
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 )
 
 // Annotation constants define the comment patterns used to disable mutations

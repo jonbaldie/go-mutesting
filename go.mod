@@ -1,4 +1,4 @@
-module github.com/jonbaldie/go-mutesting
+module github.com/jonbaldie/go-mutesting/v2
 
 go 1.25.5
 

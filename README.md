@@ -1,4 +1,4 @@
-# go-mutesting [![Go Reference](https://pkg.go.dev/badge/github.com/jonbaldie/go-mutesting.svg)](https://pkg.go.dev/github.com/jonbaldie/go-mutesting) [![Mutation Testing](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml/badge.svg)](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml)
+# go-mutesting [![Go Reference](https://pkg.go.dev/badge/github.com/jonbaldie/go-mutesting/v2.svg)](https://pkg.go.dev/github.com/jonbaldie/go-mutesting/v2) [![Mutation Testing](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml/badge.svg)](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml)
 
 go-mutesting is a mutation testing tool for Go. It tweaks your code in small ways and checks whether your tests catch the change. If they don't, that's a gap in your test suite worth closing.
 
@@ -24,7 +24,7 @@ This is an actively maintained fork of [avito-tech/go-mutesting](https://github.
 The following command mutates the go-mutesting project with all available mutators.
 
 ```bash
-go-mutesting github.com/jonbaldie/go-mutesting/...
+go-mutesting github.com/jonbaldie/go-mutesting/v2/...
 ```
 
 The execution of this command prints for every mutation if it was successfully tested or not. If not, the source code patch is printed out, so the mutation can be investigated. The following shows an example for a patch of a mutation.
@@ -93,7 +93,7 @@ It is also one of the strongest tools available for keeping AI-generated code ho
 go-mutesting includes a binary which is go-getable.
 
 ```bash
-go install -v github.com/jonbaldie/go-mutesting/...
+go install -v github.com/jonbaldie/go-mutesting/v2/...
 ```
 
 The binary's help can be invoked by executing the binary without arguments or with the `--help` argument.
@@ -109,7 +109,7 @@ The targets of the mutation testing can be defined as arguments to the binary. E
 The following example gathers all Go files which are defined by the targets and generate mutations with all available mutators of the binary.
 
 ```bash
-go-mutesting parse.go example/ github.com/jonbaldie/go-mutesting/mutator/...
+go-mutesting parse.go example/ github.com/jonbaldie/go-mutesting/v2/mutator/...
 ```
 
 Every mutation has to be tested using an [exec command](#write-mutation-exec-commands). By default the built-in exec command is used, which tests a mutation using the following steps:
@@ -118,10 +118,10 @@ Every mutation has to be tested using an [exec command](#write-mutation-exec-com
 - Execute all tests of the package of the mutated file.
 - Report if the mutation was killed.
 
-Alternatively the `--exec` argument can be used to invoke an external exec command. The [/scripts/exec](/scripts/exec) directory holds basic exec commands for Go projects. The [test-mutated-package.sh](/scripts/exec/test-mutated-package.sh) script implements all steps and almost all features of the built-in exec command. It can be for example used to test the [github.com/jonbaldie/go-mutesting/example](/example) package.
+Alternatively the `--exec` argument can be used to invoke an external exec command. The [/scripts/exec](/scripts/exec) directory holds basic exec commands for Go projects. The [test-mutated-package.sh](/scripts/exec/test-mutated-package.sh) script implements all steps and almost all features of the built-in exec command. It can be for example used to test the [github.com/jonbaldie/go-mutesting/v2/example](/example) package.
 
 ```bash
-go-mutesting --exec "$GOPATH/src/github.com/jonbaldie/go-mutesting/scripts/exec/test-mutated-package.sh" github.com/jonbaldie/go-mutesting/example
+go-mutesting --exec "$GOPATH/src/github.com/jonbaldie/go-mutesting/v2/scripts/exec/test-mutated-package.sh" github.com/jonbaldie/go-mutesting/v2/example
 ```
 
 The execution will print the following output.
@@ -179,7 +179,7 @@ The example output of the [How do I use go-mutesting?](#how-do-i-use-go-mutestin
 The blacklist file, which is named `example.blacklist` in this example, can then be used to invoke go-mutesting.
 
 ```bash
-go-mutesting --blacklist example.blacklist github.com/jonbaldie/go-mutesting/example
+go-mutesting --blacklist example.blacklist github.com/jonbaldie/go-mutesting/v2/example
 ```
 
 The execution will print the following output.
@@ -513,11 +513,11 @@ The config contains the following parameters:
 
 ## <a name="write-mutators"></a>How do I write my own mutators?
 
-Each mutator must implement the `Mutator` interface of the [github.com/jonbaldie/go-mutesting/mutator](https://godoc.org/github.com/jonbaldie/go-mutesting/mutator#Mutator) package. The methods of the interface are described in detail in the source code documentation.
+Each mutator must implement the `Mutator` interface of the [github.com/jonbaldie/go-mutesting/v2/mutator](https://pkg.go.dev/github.com/jonbaldie/go-mutesting/v2/mutator#Mutator) package. The methods of the interface are described in detail in the source code documentation.
 
-Additionally each mutator has to be registered with the `Register` function of the [github.com/jonbaldie/go-mutesting/mutator](https://godoc.org/github.com/jonbaldie/go-mutesting/mutator#Mutator) package to make it usable by the binary.
+Additionally each mutator has to be registered with the `Register` function of the [github.com/jonbaldie/go-mutesting/v2/mutator](https://pkg.go.dev/github.com/jonbaldie/go-mutesting/v2/mutator#Mutator) package to make it usable by the binary.
 
-Examples for mutators can be found in the [github.com/jonbaldie/go-mutesting/mutator](https://godoc.org/github.com/jonbaldie/go-mutesting/mutator) package and its sub-packages.
+Examples for mutators can be found in the [github.com/jonbaldie/go-mutesting/v2/mutator](https://pkg.go.dev/github.com/jonbaldie/go-mutesting/v2/mutator) package and its sub-packages.
 
 ## <a name="other-projects"></a>Other mutation testing projects and their flaws
 
@@ -541,4 +541,4 @@ All of them have significant flaws in comparison to go-mutesting:
 
 ## <a name="feature-request"></a>Can I make feature requests and report bugs and problems?
 
-Sure, just submit an [issue via the project tracker](https://github.com/jonbaldie/go-mutesting/issues/new) and we will see what I can do.
+Sure, just submit an [issue via the project tracker](https://github.com/jonbaldie/go-mutesting/v2/issues/new) and we will see what I can do.

@@ -3,16 +3,17 @@ package parser
 import (
 	"fmt"
 	"go/ast"
-	"go/build"
 	"go/parser"
 	"go/token"
 	"go/types"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/tools/go/loader" //nolint:staticcheck
 
-	"github.com/jonbaldie/go-mutesting/internal/filter"
+	"github.com/jonbaldie/go-mutesting/v2/internal/filter"
 )
 
 // ParseFile parses the content of the given file and returns the corresponding ast.File node and its file set for positional information.
@@ -48,19 +49,19 @@ func ParseAndTypeCheckFile(file string, collectors []filter.NodeCollector) (*ast
 	}
 	dir := filepath.Dir(fileAbs)
 
-	buildPkg, err := build.ImportDir(dir, build.FindOnly)
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("Could not create build package of %q: %v", file, err)
-	}
+	// Use `go list` for the import path so it always reflects the module's
+	// go.mod declaration, even when the major-version suffix differs from the
+	// GOPATH directory structure (e.g. v2 module at a non-/v2 GOPATH path).
+	importPath := goListImportPath(dir)
 
 	var conf = loader.Config{
 		ParserMode: parser.AllErrors | parser.ParseComments,
 	}
 
-	if buildPkg.ImportPath != "." {
-		conf.Import(buildPkg.ImportPath)
+	if importPath != "" && importPath != "." {
+		conf.Import(importPath)
 	} else {
-		// This is most definitely the case for files inside a "testdata" package
+		// testdata packages and edge cases where go list cannot determine a path
 		conf.CreateFromFilenames(dir, fileAbs)
 	}
 
@@ -88,4 +89,18 @@ func ParseAndTypeCheckFile(file string, collectors []filter.NodeCollector) (*ast
 	}
 
 	return src, prog.Fset, pkgInfo.Pkg, &pkgInfo.Info, nil
+}
+
+// goListImportPath returns the module-aware import path for the package in dir
+// by running `go list .`. This is more reliable than go/build.ImportDir when
+// the module's major-version suffix differs from the GOPATH directory structure.
+func goListImportPath(dir string) string {
+	cmd := exec.Command("go", "list", ".")
+	cmd.Dir = dir
+	cmd.Env = os.Environ()
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

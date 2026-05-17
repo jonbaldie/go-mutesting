@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jonbaldie/go-mutesting/internal/models"
+	"github.com/jonbaldie/go-mutesting/v2/internal/models"
 
 	"github.com/stretchr/testify/assert"
 )

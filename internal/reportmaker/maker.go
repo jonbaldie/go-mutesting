@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jonbaldie/go-mutesting/internal/baseline"
-	"github.com/jonbaldie/go-mutesting/internal/models"
+	"github.com/jonbaldie/go-mutesting/v2/internal/baseline"
+	"github.com/jonbaldie/go-mutesting/v2/internal/models"
 )
 
 // mutatorDescriptions maps mutator names to plain-English explanations.

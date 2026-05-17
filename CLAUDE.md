@@ -37,19 +37,19 @@ All packages pass. `internal/importing` and `internal/parser` were once broken i
 go build -o /tmp/go-mutesting ./cmd/go-mutesting
 /tmp/go-mutesting \
   --exec-timeout 30 --coverage --min-msi 75 --min-covered-msi 80 \
-  github.com/jonbaldie/go-mutesting/mutator/arithmetic \
-  github.com/jonbaldie/go-mutesting/mutator/branch \
-  github.com/jonbaldie/go-mutesting/mutator/concurrency \
-  github.com/jonbaldie/go-mutesting/mutator/conditional \
-  github.com/jonbaldie/go-mutesting/mutator/expression \
-  github.com/jonbaldie/go-mutesting/mutator/loop \
-  github.com/jonbaldie/go-mutesting/mutator/numbers \
-  github.com/jonbaldie/go-mutesting/mutator/select \
-  github.com/jonbaldie/go-mutesting/mutator/statement \
-  github.com/jonbaldie/go-mutesting/internal/filter \
-  github.com/jonbaldie/go-mutesting/internal/coverage \
-  github.com/jonbaldie/go-mutesting/internal/gitdiff \
-  github.com/jonbaldie/go-mutesting/internal/models
+  github.com/jonbaldie/go-mutesting/v2/mutator/arithmetic \
+  github.com/jonbaldie/go-mutesting/v2/mutator/branch \
+  github.com/jonbaldie/go-mutesting/v2/mutator/concurrency \
+  github.com/jonbaldie/go-mutesting/v2/mutator/conditional \
+  github.com/jonbaldie/go-mutesting/v2/mutator/expression \
+  github.com/jonbaldie/go-mutesting/v2/mutator/loop \
+  github.com/jonbaldie/go-mutesting/v2/mutator/numbers \
+  github.com/jonbaldie/go-mutesting/v2/mutator/select \
+  github.com/jonbaldie/go-mutesting/v2/mutator/statement \
+  github.com/jonbaldie/go-mutesting/v2/internal/filter \
+  github.com/jonbaldie/go-mutesting/v2/internal/coverage \
+  github.com/jonbaldie/go-mutesting/v2/internal/gitdiff \
+  github.com/jonbaldie/go-mutesting/v2/internal/models
 ```
 
 Exit code 4 means the gate failed (escaped mutants). Exit code 0 means all gates passed.
