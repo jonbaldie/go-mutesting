@@ -81,6 +81,28 @@ func MakeJSONReport(report models.Report) error {
 	return nil
 }
 
+// MakeSummaryJSONReport writes a compact stats-only JSON to go-mutesting-summary.json.
+// Useful for badge generation and CI dashboards that don't need per-mutant detail.
+func MakeSummaryJSONReport(stats models.Stats) error {
+	data, err := json.Marshal(stats)
+	if err != nil {
+		return err
+	}
+
+	file, err := createOrTruncateReportFile(models.ReportSummaryJSONFileName)
+	if err != nil {
+		return fmt.Errorf("Error while open/create summary JSON report file: %w", err)
+	}
+	defer closeReportFile(file, models.ReportSummaryJSONFileName)
+
+	if file == nil {
+		return errors.New("cannot create file for summary JSON report")
+	}
+
+	_, err = file.WriteString(string(data))
+	return err
+}
+
 func createOrTruncateReportFile(filename string) (*os.File, error) {
 	return os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 }

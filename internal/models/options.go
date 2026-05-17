@@ -6,6 +6,7 @@ type Options struct {
 		Debug                bool   `long:"debug" description:"Debug log output"`
 		DoNotRemoveTmpFolder bool   `long:"do-not-remove-tmp-folder" description:"Do not remove the tmp folder where all mutations are saved to"`
 		Help                 bool   `long:"help" description:"Show this help message"`
+		Noop                 bool   `long:"noop" description:"Run the test suite once without any mutations first; exit with an error if it fails"`
 		Quiet                bool   `long:"quiet" description:"Only print escaped mutants and the summary (suppress killed/skipped output)"`
 		Verbose              bool   `long:"verbose" description:"Verbose log output"`
 		Config               string `long:"config" description:"Path to config file"`
@@ -42,7 +43,8 @@ type Options struct {
 	} `group:"Git diff options"`
 
 	Logger struct {
-		GitHub bool `long:"logger-github" description:"Emit escaped mutants as GitHub Actions ::warning annotations"`
+		GitHub      bool `long:"logger-github" description:"Emit escaped mutants as GitHub Actions ::warning annotations"`
+		SummaryJSON bool `long:"logger-summary-json" description:"Write a compact stats-only JSON to go-mutesting-summary.json"`
 	} `group:"Logger options"`
 
 	Test struct {

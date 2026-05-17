@@ -226,6 +226,29 @@ MUTATOR:
 	// Group files by package to enable per-package coverage runs.
 	pkgs := importing.PackagesWithFilesOfArgs(opts.Remaining.Targets, opts)
 
+	// Noop check: run the test suite once without mutations to confirm it passes.
+	// Only applies to the built-in exec; custom --exec scripts depend on mutation
+	// environment variables and cannot be invoked safely here.
+	if opts.General.Noop && !opts.Exec.NoExec {
+		if len(execs) > 0 {
+			fmt.Fprintln(os.Stderr, "Warning: --noop is not supported with --exec; skipping initial test run")
+		} else {
+			for _, importPkg := range pkgs {
+				pkgPath := packageImportPath(importPkg.Files)
+				if pkgPath == "" {
+					continue
+				}
+				cmd := exec.Command("go", "test", "-timeout", fmt.Sprintf("%ds", opts.Exec.Timeout), pkgPath)
+				cmd.Env = os.Environ()
+				if out, err := cmd.CombinedOutput(); err != nil {
+					fmt.Fprintf(os.Stderr, "Noop check failed for %q — fix your tests before running mutation testing:\n%s\n", pkgPath, out)
+					return returnError
+				}
+			}
+			console.Verbose(opts, "Noop check passed — all packages green before mutation")
+		}
+	}
+
 	// coverProfileForPkg runs go test -coverprofile for pkg and returns the profile.
 	// Returns nil when coverage is disabled or unavailable (soft failure).
 	coverProfileForPkg := func(pkgFiles []string) *coverage.Profile {
@@ -343,6 +366,13 @@ MUTATOR:
 	}
 
 	console.Verbose(opts, "Save report into %q", models.ReportFileName)
+
+	if opts.Logger.SummaryJSON {
+		if err = reportmaker.MakeSummaryJSONReport(report.Stats); err != nil {
+			return exitError(err.Error())
+		}
+		console.Verbose(opts, "Save summary into %q", models.ReportSummaryJSONFileName)
+	}
 
 	if opts.Config.HTMLOutput || opts.General.HTMLOutput {
 		err = reportmaker.MakeHTMLReport(*report)
