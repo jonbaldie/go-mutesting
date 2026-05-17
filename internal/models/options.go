@@ -12,7 +12,7 @@ type Options struct {
 	} `group:"General options"`
 
 	Files struct {
-		Blacklist []string `long:"blacklist" description:"List of MD5 checksums of mutations which should be ignored. Each checksum must end with a new line character."`
+		Blacklist []string `long:"blacklist" description:"List of files containing MD5 checksums (one per line) of mutations to ignore."`
 		ListFiles bool     `long:"list-files" description:"List found files"`
 		PrintAST  bool     `long:"print-ast" description:"Print the ASTs of all given files and exit"`
 	} `group:"File options"`

@@ -12,7 +12,6 @@ go test ./...
 **Skip these — broken by design, don't fix:**
 - `internal/importing` — assumes GOPATH layout, fails in module mode
 - `internal/parser` — uses deprecated `go/loader`
-- `internal/annotation` — has build errors
 
 ## Key packages
 
@@ -32,5 +31,5 @@ go test ./...
 ## Conventions
 
 - Quality gates exit with code 4 (not 1) so CI can distinguish "escaped mutants" from "tool error".
-- `--min-msi` / `--min-covered-msi` default to `-1` (disabled) — don't use `0` as "not set".
+- `--min-msi` / `--min-covered-msi` CLI flags default to `-1` (sentinel for "use config or skip gate"); config zero value means no gate.
 - `HasCoverage bool` on `Report` distinguishes "coverage ran, nothing uncovered" from "coverage never ran".

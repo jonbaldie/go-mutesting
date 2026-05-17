@@ -1,4 +1,4 @@
-# go-mutesting [![GoDoc](https://godoc.org/github.com/avito-tech/go-mutesting?status.png)](https://godoc.org/github.com/avito-tech/go-mutesting) [![Build Status](https://travis-ci.org/avito-tech/go-mutesting.svg?branch=master)](https://travis-ci.org/avito-tech/go-mutesting) [![Coverage Status](https://coveralls.io/repos/avito-tech/go-mutesting/badge.png?branch=master)](https://coveralls.io/r/avito-tech/go-mutesting?branch=master)
+# go-mutesting [![GoDoc](https://godoc.org/github.com/avito-tech/go-mutesting?status.png)](https://godoc.org/github.com/avito-tech/go-mutesting) [![Mutation Testing](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml/badge.svg)](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml)
 
 go-mutesting is a framework for performing mutation testing on Go source code. Its main purpose is to find source code, which is not covered by any tests.
 
@@ -100,12 +100,10 @@ go-mutesting --exec "$GOPATH/src/github.com/avito-tech/go-mutesting/scripts/exec
 
 The execution will print the following output.
 
-> **Note**: This output is from an older version of go-mutesting. Up to date versions of go-mutesting will have different mutations.
-
 ```diff
-PASS "/tmp/go-mutesting-422402775//home/avito-tech/go/src/github.com/avito-tech/go-mutesting/example/example.go.0" with checksum b705f4c99e6d572de509609eb0a625be
-PASS "/tmp/go-mutesting-422402775//home/avito-tech/go/src/github.com/avito-tech/go-mutesting/example/example.go.1" with checksum eb54efffc5edfc7eba2b276371b29836
-PASS "/tmp/go-mutesting-422402775//home/avito-tech/go/src/github.com/avito-tech/go-mutesting/example/example.go.2" with checksum 011df9567e5fee9bf75cbe5d5dc1c81f
+PASS example/example.go:18 (statement/remove)
+PASS example/example.go:22 (branch/if)
+PASS example/example.go:24 (numbers/incrementer)
 --- Original
 +++ New
 @@ -16,7 +16,7 @@
@@ -117,9 +115,9 @@ PASS "/tmp/go-mutesting-422402775//home/avito-tech/go/src/github.com/avito-tech/
         }
 
         n++
-FAIL "/tmp/go-mutesting-422402775//home/avito-tech/go/src/github.com/avito-tech/go-mutesting/example/example.go.3" with checksum 82fc14acf7b561598bfce25bf3a162a2
-PASS "/tmp/go-mutesting-422402775//home/avito-tech/go/src/github.com/avito-tech/go-mutesting/example/example.go.4" with checksum 5720f1bf404abea121feb5a50caf672c
-PASS "/tmp/go-mutesting-422402775//home/avito-tech/go/src/github.com/avito-tech/go-mutesting/example/example.go.5" with checksum d6c1b5e25241453128f9f3bf1b9e7741
+FAIL example/example.go:17 (statement/remove)
+PASS example/example.go:26 (arithmetic/base)
+PASS example/example.go:28 (expression/remove)
 --- Original
 +++ New
 @@ -24,7 +24,6 @@
@@ -130,14 +128,15 @@ PASS "/tmp/go-mutesting-422402775//home/avito-tech/go/src/github.com/avito-tech/
 
         return n
  }
-FAIL "/tmp/go-mutesting-422402775//home/avito-tech/go/src/github.com/avito-tech/go-mutesting/example/example.go.6" with checksum 5b1ca0cfedd786d9df136a0e042df23a
-PASS "/tmp/go-mutesting-422402775//home/avito-tech/go/src/github.com/avito-tech/go-mutesting/example/example.go.8" with checksum 6928f4458787c7042c8b4505888300a6
-The mutation score is 0.750000 (6 passed, 2 failed, 0 skipped, total is 8)
+FAIL example/example.go:25 (statement/remove)
+PASS example/example.go:30 (branch/if)
+The mutation score is 75.00% (6 killed, 2 escaped, 0 errored, 0 not covered, 0 skipped, 8 total)
+The covered-code mutation score is 0.00%
 ```
 
-The output shows that eight mutations have been found and tested. Six of them passed which means that the test suite failed for these mutations and the mutations were therefore killed. However, two mutations did not fail the test suite. Their source code patches are shown in the output which can be used to investigate these mutations.
+The output shows eight mutations. Six were killed (tests detected the mutation — shown as `PASS`). Two escaped (tests didn't catch them — shown as `FAIL`), and their diffs are printed so you can write a test to cover the gap.
 
-The summary also shows the **mutation score** which is a metric on how many mutations are killed by the test suite and therefore states the quality of the test suite. The mutation score is calculated by dividing the number of passed mutations by the number of total mutations, for the example above this would be 6/8=0.75. A score of 1.0 means that all mutations have been killed.
+The summary shows the **mutation score** (MSI): killed / total. For the example above, 6/8 = 75.00%. A score of 100% means every mutation was caught.
 
 ### <a name="black-list-false-positives"></a>Blacklist false positives
 
@@ -159,12 +158,10 @@ go-mutesting --blacklist example.blacklist github.com/avito-tech/go-mutesting/ex
 
 The execution will print the following output.
 
-> **Note**: This output is from an older version of go-mutesting. Up to date versions of go-mutesting will have different mutations.
-
 ```diff
-PASS "/tmp/go-mutesting-208240643/example.go.0" with checksum b705f4c99e6d572de509609eb0a625be
-PASS "/tmp/go-mutesting-208240643/example.go.1" with checksum eb54efffc5edfc7eba2b276371b29836
-PASS "/tmp/go-mutesting-208240643/example.go.2" with checksum 011df9567e5fee9bf75cbe5d5dc1c81f
+PASS example/example.go:18 (statement/remove)
+PASS example/example.go:22 (branch/if)
+PASS example/example.go:24 (numbers/incrementer)
 --- Original
 +++ New
 @@ -16,7 +16,7 @@
@@ -176,11 +173,12 @@ PASS "/tmp/go-mutesting-208240643/example.go.2" with checksum 011df9567e5fee9bf7
         }
 
         n++
-FAIL "/tmp/go-mutesting-208240643/example.go.3" with checksum 82fc14acf7b561598bfce25bf3a162a2
-PASS "/tmp/go-mutesting-208240643/example.go.4" with checksum 5720f1bf404abea121feb5a50caf672c
-PASS "/tmp/go-mutesting-208240643/example.go.5" with checksum d6c1b5e25241453128f9f3bf1b9e7741
-PASS "/tmp/go-mutesting-208240643/example.go.8" with checksum 6928f4458787c7042c8b4505888300a6
-The mutation score is 0.857143 (6 passed, 1 failed, 0 skipped, total is 7)
+FAIL example/example.go:17 (statement/remove)
+PASS example/example.go:26 (arithmetic/base)
+PASS example/example.go:28 (expression/remove)
+PASS example/example.go:30 (branch/if)
+The mutation score is 85.71% (6 killed, 1 escaped, 0 errored, 0 not covered, 0 skipped, 7 total)
+The covered-code mutation score is 0.00%
 ```
 
 By comparing this output to the original output we can state that we now have 7 mutations instead of 8.
@@ -231,7 +229,7 @@ The final summary includes a per-mutator breakdown so you can see which mutation
 ```bash
 go-mutesting \
   --git-diff-lines \
-  --git-diff-base origin/main \
+  --git-diff-base master \
   --ignore-msi-with-no-mutations \
   --min-msi 80 \
   ./...
@@ -245,53 +243,35 @@ To further reduce false positives and provide granular control over mutations,
 go-mutesting now supports special comment annotations. These allow you to exclude specific functions, lines, or patterns from mutation.
 
 #### Annotation Types
-1. ```bash
-   // mutator-disable-func
-   
-Disables all mutations for an entire function.  
-Place this comment above the function declaration.
 
-Example:
-```bash
-// mutator-disable-func  
-func CalculateDiscount(price float64) float64 {  
-    return price * 0.9  
+1. `// mutator-disable-func` — disables all mutations in the function that follows it.
+
+```go
+// mutator-disable-func
+func CalculateDiscount(price float64) float64 {
+    return price * 0.9
 }
 ```
 
-2. ```bash
-   // mutator-disable-next-line <mutator1>, <mutator2>
+2. `// mutator-disable-next-line <mutator1>, <mutator2>` — disables mutations on the next line. Use `*` for all mutators.
 
-Disables mutations for the next line of code.  
-Use * to exclude all mutators.  
-Specify mutator names (e.g., branch/case) to exclude selectively.
+```go
+// mutator-disable-next-line *
+x = 42
 
-Example:
-
-```bash
-// mutator-disable-next-line *  
-x = 42  // Fully protected from mutations  
-
-// mutator-disable-next-line branch/if, increment  
-if x > 0 {  // Only branch/if and increment mutators are disabled  
-    y += 1  
-}  
+// mutator-disable-next-line branch/if, increment
+if x > 0 {
+    y += 1
+}
 ```
 
-3. ```bash
-   // mutator-disable-regexp <pattern> <mutator1>, <mutator2>
+3. `// mutator-disable-regexp <pattern> <mutator1>, <mutator2>` — disables mutations on any line in the file matching the regex. Use `*` for all mutators.
 
-Disables mutations for lines matching a regex pattern.  
-Сan be placed on any line in the file.  
-Use * to exclude all mutators.  
-Specify mutator names (e.g., branch/case) to exclude selectively.
-
-Example:
-```bash
+```go
 s := MyStruct{name: "Go"}
 s.Method()
 
-// mutator-disable-regexp s\.Method\(\) *  
+// mutator-disable-regexp s\.Method\(\) *
 ```
 
 All mutation annotations only apply to the file where they are declared. There is no global/cross-file propagation.
@@ -475,6 +455,8 @@ The config contains the following parameters:
 | json_output          | false         | Make report.json file with a mutation test report.                                                                                                                 |
 | html_output          | false         | Make go-mutesting-report.html file with a mutation test report.                                                                                                    |
 | silent_mode          | false         | Do not print mutation stats.                                                                                                                                       |
+| min_msi              | 0             | Minimum required MSI (0–100). 0 means no gate.                                                                                                                    |
+| min_covered_msi      | 0             | Minimum required covered-code MSI (0–100). 0 means no gate.                                                                                                       |
 | exclude_dirs         | []string(nil) | Directories for excluding. In fact, there are not directories. These are the prefix for a path when we scan a file system. So this parameter is sensitive for args |
 
 ## <a name="write-mutators"></a>How do I write my own mutators?

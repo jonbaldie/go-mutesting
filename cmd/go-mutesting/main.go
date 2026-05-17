@@ -437,11 +437,11 @@ func checkQualityGates(opts *models.Options, report *models.Report) int {
 	}
 
 	failed := false
-	if minMsi > 0 && msiPct < minMsi {
+	if minMsi >= 0 && msiPct < minMsi {
 		fmt.Fprintf(os.Stderr, "MSI %.2f%% is below minimum required %.2f%%\n", msiPct, minMsi)
 		failed = true
 	}
-	if minCoveredMsi > 0 && covMsiPct < minCoveredMsi {
+	if minCoveredMsi >= 0 && covMsiPct < minCoveredMsi {
 		fmt.Fprintf(os.Stderr, "Covered MSI %.2f%% is below minimum required %.2f%%\n", covMsiPct, minCoveredMsi)
 		failed = true
 	}
@@ -704,6 +704,12 @@ func mutateExec(
 	}
 
 	console.Debug(opts, "Execute %q for mutation", opts.Exec.Exec)
+
+	// Compute diff so OriginalStartLine is available for --logger-github and --coverage.
+	// diff exits 1 when files differ (normal), so discard the error.
+	extDiff, _ := exec.Command("diff", "--label=Original", "--label=New", "-u", file, mutationFile).CombinedOutput()
+	mutant.Mutator.OriginalStartLine = parser.FindOriginalStartLine(extDiff)
+	mutant.Diff = string(extDiff)
 
 	execCommand := exec.Command(execs[0], execs[1:]...)
 
