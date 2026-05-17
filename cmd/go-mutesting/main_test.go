@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/avito-tech/go-mutesting/internal/models"
+	"github.com/jonbaldie/go-mutesting/internal/models"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -37,7 +37,7 @@ func TestMainFromOtherDirectory(t *testing.T) {
 	testMain(
 		t,
 		"../..",
-		[]string{"--debug", "--exec-timeout", "1", "github.com/avito-tech/go-mutesting/example"},
+		[]string{"--debug", "--exec-timeout", "1", "github.com/jonbaldie/go-mutesting/example"},
 		returnOk,
 		"36 killed",
 	)

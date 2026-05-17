@@ -3,17 +3,17 @@ package test
 import (
 	"bytes"
 	"fmt"
-	"github.com/avito-tech/go-mutesting/internal/annotation"
-	"github.com/avito-tech/go-mutesting/internal/filter"
-	"github.com/avito-tech/go-mutesting/internal/parser"
+	"github.com/jonbaldie/go-mutesting/internal/annotation"
+	"github.com/jonbaldie/go-mutesting/internal/filter"
+	"github.com/jonbaldie/go-mutesting/internal/parser"
 	"go/printer"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/avito-tech/go-mutesting"
-	"github.com/avito-tech/go-mutesting/mutator"
+	"github.com/jonbaldie/go-mutesting"
+	"github.com/jonbaldie/go-mutesting/mutator"
 )
 
 // Mutator tests a mutator.

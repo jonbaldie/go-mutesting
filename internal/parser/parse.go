@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/tools/go/loader" //nolint:staticcheck
 
-	"github.com/avito-tech/go-mutesting/internal/filter"
+	"github.com/jonbaldie/go-mutesting/internal/filter"
 )
 
 // ParseFile parses the content of the given file and returns the corresponding ast.File node and its file set for positional information.

@@ -1,4 +1,4 @@
-module github.com/avito-tech/go-mutesting
+module github.com/jonbaldie/go-mutesting
 
 go 1.25.5
 

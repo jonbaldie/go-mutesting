@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/avito-tech/go-mutesting/internal/models"
+	"github.com/jonbaldie/go-mutesting/internal/models"
 )
 
 //go:embed templates/report.html.gotpl

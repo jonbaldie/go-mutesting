@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/avito-tech/go-mutesting/internal/annotation"
-	"github.com/avito-tech/go-mutesting/internal/filter"
+	"github.com/jonbaldie/go-mutesting/internal/annotation"
+	"github.com/jonbaldie/go-mutesting/internal/filter"
 )
 
 func TestParseAndTypeCheckFileTypeCheckWholePackage(t *testing.T) {
