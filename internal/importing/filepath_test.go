@@ -2,7 +2,6 @@ package importing
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/jonbaldie/go-mutesting/internal/models"
@@ -11,23 +10,18 @@ import (
 )
 
 func TestFilesOfArgs(t *testing.T) {
-	p := os.Getenv("GOPATH") + "/src/"
-
 	for _, test := range []struct {
 		args   []string
 		expect []string
 	}{
-		// empty
 		{
 			[]string{},
 			[]string{"filepath.go", "import.go"},
 		},
-		// files
 		{
 			[]string{"./filepathfixtures/first.go"},
 			[]string{"./filepathfixtures/first.go"},
 		},
-		// directories
 		{
 			[]string{"./filepathfixtures"},
 			[]string{"filepathfixtures/fifth.go", "filepathfixtures/first.go", "filepathfixtures/second.go", "filepathfixtures/third.go"},
@@ -41,52 +35,26 @@ func TestFilesOfArgs(t *testing.T) {
 				"../importing/filepathfixtures/third.go",
 			},
 		},
-		// packages
-		{
-			[]string{"github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures"},
-			[]string{
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/fifth.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/first.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/second.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/third.go",
-			},
-		},
-		{
-			[]string{"github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/..."},
-			[]string{
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/fifth.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/first.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/second.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/third.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/secondfixturespackage/fourth.go",
-			},
-		},
 	} {
 		var opts = &models.Options{}
 		got := FilesOfArgs(test.args, opts)
-
 		assert.Equal(t, test.expect, got, fmt.Sprintf("With args: %#v", test.args))
 	}
 }
 
 func TestPackagesWithFilesOfArgs(t *testing.T) {
-	p := os.Getenv("GOPATH") + "/src/"
-
 	for _, test := range []struct {
 		args   []string
 		expect []Package
 	}{
-		// empty
 		{
 			[]string{},
 			[]Package{{Name: ".", Files: []string{"filepath.go", "import.go"}}},
 		},
-		// files
 		{
 			[]string{"./filepathfixtures/first.go"},
 			[]Package{{Name: "filepathfixtures", Files: []string{"./filepathfixtures/first.go"}}},
 		},
-		// directories
 		{
 			[]string{"./filepathfixtures"},
 			[]Package{{Name: "filepathfixtures", Files: []string{
@@ -105,55 +73,18 @@ func TestPackagesWithFilesOfArgs(t *testing.T) {
 				"../importing/filepathfixtures/third.go",
 			}}},
 		},
-		// packages
-		{
-			[]string{"github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures"},
-			[]Package{{
-				Name: p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures",
-				Files: []string{
-					p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/fifth.go",
-					p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/first.go",
-					p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/second.go",
-					p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/third.go",
-				},
-			}},
-		},
-		{
-			[]string{"github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/..."},
-			[]Package{
-				{
-					Name: p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures",
-					Files: []string{
-						p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/fifth.go",
-						p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/first.go",
-						p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/second.go",
-						p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/third.go",
-					},
-				},
-				{
-					Name: p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/secondfixturespackage",
-					Files: []string{
-						p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/secondfixturespackage/fourth.go",
-					},
-				},
-			},
-		},
 	} {
 		var opts = &models.Options{}
 		got := PackagesWithFilesOfArgs(test.args, opts)
-
 		assert.Equal(t, test.expect, got, fmt.Sprintf("With args: %#v", test.args))
 	}
 }
 
 func TestFilesWithSkipWithoutTests(t *testing.T) {
-	p := os.Getenv("GOPATH") + "/src/"
-
 	for _, test := range []struct {
 		args   []string
 		expect []string
 	}{
-		// files
 		{
 			[]string{"./filepathfixtures/first.go"},
 			[]string(nil),
@@ -162,37 +93,23 @@ func TestFilesWithSkipWithoutTests(t *testing.T) {
 			[]string{"./filepathfixtures/second.go"},
 			[]string{"./filepathfixtures/second.go"},
 		},
-		// directories
 		{
 			[]string{"./filepathfixtures"},
 			[]string{"filepathfixtures/fifth.go", "filepathfixtures/second.go", "filepathfixtures/third.go"},
-		},
-		// packages
-		{
-			[]string{"github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/..."},
-			[]string{
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/fifth.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/second.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/third.go",
-			},
 		},
 	} {
 		var opts = &models.Options{}
 		opts.Config.SkipFileWithoutTest = true
 		got := FilesOfArgs(test.args, opts)
-
 		assert.Equal(t, test.expect, got, fmt.Sprintf("With args: %#v", test.args))
 	}
 }
 
 func TestFilesWithSkipWithBuildTagsTests(t *testing.T) {
-	p := os.Getenv("GOPATH") + "/src/"
-
 	for _, test := range []struct {
 		args   []string
 		expect []string
 	}{
-		// files
 		{
 			[]string{"./filepathfixtures/first.go"},
 			[]string(nil),
@@ -209,36 +126,24 @@ func TestFilesWithSkipWithBuildTagsTests(t *testing.T) {
 			[]string{"./filepathfixtures/second.go"},
 			[]string{"./filepathfixtures/second.go"},
 		},
-		// directories
 		{
 			[]string{"./filepathfixtures"},
 			[]string{"filepathfixtures/second.go"},
-		},
-		// packages
-		{
-			[]string{"github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/..."},
-			[]string{
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/second.go",
-			},
 		},
 	} {
 		var opts = &models.Options{}
 		opts.Config.SkipFileWithBuildTag = true
 		got := FilesOfArgs(test.args, opts)
-
 		assert.Equal(t, test.expect, got, fmt.Sprintf("With args: %#v", test.args))
 	}
 }
 
 func TestFilesWithExcludedDirs(t *testing.T) {
-	p := os.Getenv("GOPATH") + "/src/"
-
 	for _, test := range []struct {
 		args   []string
 		expect []string
 		config []string
 	}{
-		// files
 		{
 			[]string{"./filepathfixtures/first.go"},
 			[]string{"./filepathfixtures/first.go"},
@@ -259,7 +164,6 @@ func TestFilesWithExcludedDirs(t *testing.T) {
 			[]string(nil),
 			[]string{"./filepathfixtures"},
 		},
-		// directories
 		{
 			[]string{"./filepathfixtures/..."},
 			[]string{
@@ -290,35 +194,10 @@ func TestFilesWithExcludedDirs(t *testing.T) {
 			},
 			[]string(nil),
 		},
-
-		//packages
-		{
-			[]string{"github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/..."},
-			[]string{
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/fifth.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/first.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/second.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/third.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/secondfixturespackage/fourth.go",
-			},
-			[]string{"filepathfixtures"},
-		},
-		{
-			[]string{"github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/..."},
-			[]string{
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/fifth.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/first.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/second.go",
-				p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/third.go",
-			},
-			[]string{p + "github.com/jonbaldie/go-mutesting/internal/importing/filepathfixtures/secondfixturespackage/"},
-		},
 	} {
 		var opts = &models.Options{}
 		opts.Config.ExcludeDirs = test.config
-
 		got := FilesOfArgs(test.args, opts)
-
 		assert.Equal(t, test.expect, got, fmt.Sprintf("With args: %#v", test.args))
 	}
 }

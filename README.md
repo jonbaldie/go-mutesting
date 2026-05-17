@@ -1,6 +1,6 @@
-# go-mutesting [![GoDoc](https://godoc.org/github.com/jonbaldie/go-mutesting?status.png)](https://godoc.org/github.com/jonbaldie/go-mutesting) [![Mutation Testing](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml/badge.svg)](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml)
+# go-mutesting [![Go Reference](https://pkg.go.dev/badge/github.com/jonbaldie/go-mutesting.svg)](https://pkg.go.dev/github.com/jonbaldie/go-mutesting) [![Mutation Testing](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml/badge.svg)](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml)
 
-go-mutesting is a framework for performing mutation testing on Go source code. Its main purpose is to find source code, which is not covered by any tests.
+go-mutesting is a mutation testing tool for Go. It tweaks your code in small ways and checks whether your tests catch the change. If they don't, that's a gap in your test suite worth closing.
 
 ## Quick example
 

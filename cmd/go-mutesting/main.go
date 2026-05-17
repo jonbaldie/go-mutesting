@@ -39,6 +39,7 @@ import (
 	"github.com/jonbaldie/go-mutesting/mutator"
 	_ "github.com/jonbaldie/go-mutesting/mutator/arithmetic"
 	_ "github.com/jonbaldie/go-mutesting/mutator/branch"
+	_ "github.com/jonbaldie/go-mutesting/mutator/conditional"
 	_ "github.com/jonbaldie/go-mutesting/mutator/expression"
 	_ "github.com/jonbaldie/go-mutesting/mutator/loop"
 	_ "github.com/jonbaldie/go-mutesting/mutator/numbers"
@@ -437,6 +438,10 @@ func checkQualityGates(opts *models.Options, report *models.Report) int {
 	}
 
 	failed := false
+	if opts.Score.FailOnEscaped && report.Stats.EscapedCount > 0 {
+		fmt.Fprintf(os.Stderr, "%d mutant(s) escaped — use --fail-on-escaped requires all mutants to be killed\n", report.Stats.EscapedCount)
+		failed = true
+	}
 	if minMsi >= 0 && msiPct < minMsi {
 		fmt.Fprintf(os.Stderr, "MSI %.2f%% is below minimum required %.2f%%\n", msiPct, minMsi)
 		failed = true
@@ -558,7 +563,7 @@ func mutate(
 						switch execExitCode {
 						case 0: // Tests failed → mutation killed
 							out := fmt.Sprintf("PASS %s\n", msg)
-							if !opts.Config.SilentMode {
+							if !opts.Config.SilentMode && !opts.General.Quiet {
 								console.PrintPass(out)
 							}
 							mutant.ProcessOutput = out
@@ -574,7 +579,7 @@ func mutate(
 							stats.Stats.EscapedCount++
 						case 2: // Did not compile → skip
 							out := fmt.Sprintf("SKIP %s\n", msg)
-							if !opts.Config.SilentMode {
+							if !opts.Config.SilentMode && !opts.General.Quiet {
 								console.PrintSkip(out)
 							}
 							mutant.ProcessOutput = out

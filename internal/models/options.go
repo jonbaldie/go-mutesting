@@ -6,6 +6,7 @@ type Options struct {
 		Debug                bool   `long:"debug" description:"Debug log output"`
 		DoNotRemoveTmpFolder bool   `long:"do-not-remove-tmp-folder" description:"Do not remove the tmp folder where all mutations are saved to"`
 		Help                 bool   `long:"help" description:"Show this help message"`
+		Quiet                bool   `long:"quiet" description:"Only print escaped mutants and the summary (suppress killed/skipped output)"`
 		Verbose              bool   `long:"verbose" description:"Verbose log output"`
 		Config               string `long:"config" description:"Path to config file"`
 		HTMLOutput           bool   `long:"html-output" description:"Generates a go-mutesting-report.html file after testing is complete"`
@@ -55,6 +56,7 @@ type Options struct {
 		MinMsi                  float64 `long:"min-msi" description:"Minimum required MSI (0-100). Exit code 4 when not met." default:"-1"`
 		MinCoveredMsi           float64 `long:"min-covered-msi" description:"Minimum required covered-MSI (0-100). Exit code 4 when not met." default:"-1"`
 		IgnoreMsiWithNoMutations bool   `long:"ignore-msi-with-no-mutations" description:"Exit 0 even when MSI thresholds are not met if no mutations were generated (useful with --git-diff-lines)"`
+		FailOnEscaped           bool    `long:"fail-on-escaped" description:"Exit code 4 if any mutant escapes, without requiring --min-msi"`
 	} `group:"Score options"`
 
 	Remaining struct {

@@ -26,8 +26,7 @@ jobs:
         # Scoped to packages with isolated unit tests.
         # Excluded:
         #   cmd/               - integration tests re-invoke the binary (would recurse)
-        #   internal/annotation - build errors prevent compilation
-        #   internal/importing  - relies on GOPATH/src layout; fails in module mode
+        #   internal/importing  - package-based resolution requires GOPATH mode
         #   internal/parser     - uses deprecated go/loader; excluded until migration
         # --coverage generates a profile before mutation to compute covered-code MSI
         # and marks mutants in untested code as "not covered" rather than running them.
@@ -36,10 +35,11 @@ jobs:
           go-mutesting \
             --exec-timeout 30 \
             --coverage \
-            --min-msi 40 \
-            --min-covered-msi 60 \
+            --min-msi 75 \
+            --min-covered-msi 80 \
             github.com/jonbaldie/go-mutesting/mutator/arithmetic \
             github.com/jonbaldie/go-mutesting/mutator/branch \
+            github.com/jonbaldie/go-mutesting/mutator/conditional \
             github.com/jonbaldie/go-mutesting/mutator/expression \
             github.com/jonbaldie/go-mutesting/mutator/loop \
             github.com/jonbaldie/go-mutesting/mutator/numbers \
