@@ -64,7 +64,7 @@ Follow these steps in order when landing a change:
 4. **Commit and push** — fix forward only. No `--force-push` and no `--amend` on published commits. If a hook or check fails, fix it in a new commit.
 5. **Watch CI** — wait for the Actions run to go green before merging into master.
 6. **Merge to master** — then push master.
-7. **Tag and release** — pick the next semver tag. Create a GitHub release page: one short paragraph, plain English a high-schooler can follow, no jargon. List what changed. End with the install command.
+7. **Tag and release** — pick the next semver tag. Create a GitHub release page: following prior release pages, use a very succinct style and 7th grade English.
 
 ## Conventions
 
