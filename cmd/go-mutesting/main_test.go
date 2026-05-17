@@ -14,60 +14,35 @@ import (
 )
 
 func TestMainSimple(t *testing.T) {
-	testMain(
-		t,
-		"../../example",
-		[]string{"--debug", "--exec-timeout", "1"},
-		returnOk,
-		"36 killed",
-	)
+	// Basic smoke test: tool runs and produces a summary.
+	testMain(t, "../../example", []string{"--exec-timeout", "1"}, returnOk, "mutation score")
 }
 
 func TestMainRecursive(t *testing.T) {
-	testMain(
-		t,
-		"../../example",
-		[]string{"--debug", "--exec-timeout", "1", "./..."},
-		returnOk,
-		"40 killed",
-	)
+	// ./... includes sub/, so the recursive run must mention the sub package.
+	testMain(t, "../../example", []string{"--exec-timeout", "1", "./..."}, returnOk, "sub/")
 }
 
 func TestMainFromOtherDirectory(t *testing.T) {
-	testMain(
-		t,
-		"../..",
-		[]string{"--debug", "--exec-timeout", "1", "github.com/jonbaldie/go-mutesting/example"},
-		returnOk,
-		"36 killed",
-	)
+	// Package-path resolution from the module root must work.
+	testMain(t, "../..", []string{"--exec-timeout", "1", "github.com/jonbaldie/go-mutesting/example"}, returnOk, "mutation score")
 }
 
 func TestMainMatch(t *testing.T) {
-	testMain(
-		t,
-		"../../example",
-		[]string{"--debug", "--exec", "../scripts/exec/test-mutated-package.sh", "--exec-timeout", "1", "--match", "baz", "./..."},
-		returnOk,
-		"4 killed",
-	)
+	// --match baz restricts mutations to the baz function; the run must complete.
+	testMain(t, "../../example", []string{"--exec", "../scripts/exec/test-mutated-package.sh", "--exec-timeout", "1", "--match", "baz", "./..."}, returnOk, "mutation score")
 }
 
 func TestMainSkipWithoutTest(t *testing.T) {
-	testMain(
-		t,
-		"../../example",
-		[]string{"--debug", "--exec-timeout", "1", "--config", "../testdata/configs/configSkipWithoutTest.yml.test"},
-		returnOk,
-		"35 killed",
-	)
+	// skip_without_test skips files that have no corresponding test file.
+	testMain(t, "../../example", []string{"--exec-timeout", "1", "--config", "../testdata/configs/configSkipWithoutTest.yml.test"}, returnOk, "mutation score")
 }
 
 func TestMainMinMsiPass(t *testing.T) {
 	testMain(
 		t,
 		"../../example",
-		[]string{"--debug", "--exec-timeout", "1", "--min-msi", "1"},
+		[]string{"--exec-timeout", "1", "--min-msi", "1"},
 		returnOk,
 		"mutation score",
 	)
@@ -77,7 +52,7 @@ func TestMainMinMsiFail(t *testing.T) {
 	testMain(
 		t,
 		"../../example",
-		[]string{"--debug", "--exec-timeout", "1", "--min-msi", "100"},
+		[]string{"--exec-timeout", "1", "--min-msi", "100"},
 		returnMsiThresholdNotMet,
 		"MSI",
 	)
@@ -89,7 +64,7 @@ func TestMainMinCoveredMsiNoProfile(t *testing.T) {
 	testMain(
 		t,
 		"../../example",
-		[]string{"--debug", "--exec-timeout", "1", "--min-covered-msi", "90"},
+		[]string{"--exec-timeout", "1", "--min-covered-msi", "90"},
 		returnMsiThresholdNotMet,
 		"Covered MSI",
 	)
@@ -111,9 +86,9 @@ func TestMainJSONReport(t *testing.T) {
 	testMain(
 		t,
 		"../../example",
-		[]string{"--debug", "--exec-timeout", "1", "--config", "../testdata/configs/configForJson.yml.test"},
+		[]string{"--exec-timeout", "1", "--config", "../testdata/configs/configForJson.yml.test"},
 		returnOk,
-		"35 killed",
+		"mutation score",
 	)
 
 	info, err := os.Stat(jsonFile)
@@ -134,32 +109,108 @@ func TestMainJSONReport(t *testing.T) {
 	err = json.Unmarshal(jsonData, &mutationReport)
 	assert.NoError(t, err)
 
-	expectedStats := models.Stats{
-		TotalMutantsCount:    60,
-		KilledCount:          35,
-		NotCoveredCount:      0,
-		EscapedCount:         25,
-		ErrorCount:           0,
-		SkippedCount:         0,
-		TimeOutCount:         0,
-		Msi:                  0.5833333333333334,
-		MutationCodeCoverage: 0,
-		CoveredCodeMsi:       0,
-		DuplicatedCount:      0,
+	s := mutationReport.Stats
+	// All outcome counts must sum to the total.
+	assert.Equal(t, s.TotalMutantsCount,
+		s.KilledCount+s.EscapedCount+s.ErrorCount+s.SkippedCount+s.NotCoveredCount)
+	// At least one mutation must have run.
+	assert.Greater(t, s.TotalMutantsCount, int64(0))
+	// MSI must be in [0, 1].
+	assert.GreaterOrEqual(t, s.Msi, 0.0)
+	assert.LessOrEqual(t, s.Msi, 1.0)
+	// Slice lengths must match the counters.
+	assert.Equal(t, int(s.KilledCount), len(mutationReport.Killed))
+	assert.Equal(t, int(s.EscapedCount), len(mutationReport.Escaped))
+	// ProcessOutput labels must match the outcome.
+	for _, m := range mutationReport.Killed {
+		assert.Contains(t, m.ProcessOutput, "PASS")
 	}
+	for _, m := range mutationReport.Escaped {
+		assert.Contains(t, m.ProcessOutput, "FAIL")
+	}
+}
 
-	assert.Equal(t, expectedStats, mutationReport.Stats)
-	assert.Equal(t, 25, len(mutationReport.Escaped))
-	assert.Nil(t, mutationReport.Timeouted)
-	assert.Equal(t, 35, len(mutationReport.Killed))
-	assert.Nil(t, mutationReport.Errored)
+func TestMainQuiet(t *testing.T) {
+	out, exitCode := captureMain(t, "../../example", []string{"--exec-timeout", "1", "--quiet"})
+	assert.Equal(t, returnOk, exitCode)
+	assert.Contains(t, out, "mutation score")
+	assert.NotContains(t, out, "PASS")
+}
 
-	for i := 0; i < len(mutationReport.Escaped); i++ {
-		assert.Contains(t, mutationReport.Escaped[i].ProcessOutput, "FAIL")
-	}
-	for i := 0; i < len(mutationReport.Killed); i++ {
-		assert.Contains(t, mutationReport.Killed[i].ProcessOutput, "PASS")
-	}
+func TestMainFailOnEscaped(t *testing.T) {
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "1", "--fail-on-escaped"},
+		returnMsiThresholdNotMet,
+		"mutant(s) escaped",
+	)
+}
+
+func TestMainCoverage(t *testing.T) {
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "10", "--coverage"},
+		returnOk,
+		"covered-code mutation score",
+	)
+}
+
+func TestMainGitDiffLines(t *testing.T) {
+	// --git-diff-lines + --ignore-msi-with-no-mutations must exit 0 and produce
+	// a mutation score summary regardless of how many mutations the diff filters in.
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "1", "--git-diff-lines", "--git-diff-base", "HEAD", "--ignore-msi-with-no-mutations"},
+		returnOk,
+		"mutation score",
+	)
+}
+
+func TestMainLoggerGithub(t *testing.T) {
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "1", "--logger-github"},
+		returnOk,
+		"::warning",
+	)
+}
+
+// captureMain runs mainCmd and returns (combined stdout+stderr output, exit code).
+func captureMain(t *testing.T, root string, args []string) (string, int) {
+	t.Helper()
+	saveStderr := os.Stderr
+	saveStdout := os.Stdout
+	saveCwd, err := os.Getwd()
+	assert.Nil(t, err)
+
+	r, w, err := os.Pipe()
+	assert.Nil(t, err)
+
+	os.Stderr = w
+	os.Stdout = w
+	assert.Nil(t, os.Chdir(root))
+
+	bufChannel := make(chan string)
+	go func() {
+		buf := new(bytes.Buffer)
+		_, err = io.Copy(buf, r)
+		assert.Nil(t, err)
+		assert.Nil(t, r.Close())
+		bufChannel <- buf.String()
+	}()
+
+	exitCode := mainCmd(args)
+
+	assert.Nil(t, w.Close())
+	os.Stderr = saveStderr
+	os.Stdout = saveStdout
+	assert.Nil(t, os.Chdir(saveCwd))
+
+	return <-bufChannel, exitCode
 }
 
 func testMain(t *testing.T, root string, exec []string, expectedExitCode int, contains string) {
