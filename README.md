@@ -2,6 +2,23 @@
 
 go-mutesting is a mutation testing tool for Go. It tweaks your code in small ways and checks whether your tests catch the change. If they don't, that's a gap in your test suite worth closing.
 
+## This fork
+
+This is an actively maintained fork of the unmaintained [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting) upstream. Key additions:
+
+| Feature | Flag |
+| :--- | :--- |
+| Parallel execution (all CPUs by default) | `--workers N` |
+| Quiet mode — suppress killed/skip noise | `--quiet` |
+| Quality gates — fail CI below a score | `--min-msi`, `--min-covered-msi` |
+| Git diff filter — only mutate changed lines | `--git-diff-lines` |
+| Coverage-aware MSI | `--coverage` |
+| GitHub Actions annotations | `--logger-github` |
+| Compact stats JSON for badges/dashboards | `--logger-summary-json` |
+| Baseline file — only fail on *new* escapes | `--baseline`, `--update-baseline` |
+| LLM-ready escaped-mutant report | `--logger-agentic-json` |
+| Live progress display | automatic on TTY |
+
 ## Quick example
 
 The following command mutates the go-mutesting project with all available mutators.
@@ -43,6 +60,13 @@ We know that the code originates from a remove method which means that the mutat
 
 - [What is mutation testing?](#what-is-mutation-testing)
 - [How do I use go-mutesting?](#how-do-i-use-go-mutesting)
+  - [Blacklist false positives](#black-list-false-positives)
+  - [Quality gates](#quality-gates)
+  - [Git diff filtering](#git-diff)
+  - [Baseline — only fail on new escapes](#baseline)
+  - [LLM-ready report](#agentic-json)
+  - [Live progress](#progress)
+  - [Mutation control via annotations](#mutation-annotations)
 - [How do I write my own mutation exec commands?](#write-mutation-exec-commands)
 - [Which mutators are implemented?](#list-of-mutators)
 - [Other mutation testing projects and their flaws](#other-projects)
@@ -238,6 +262,32 @@ go-mutesting \
 ```
 
 Add `--logger-github` to emit escaped mutants as GitHub Actions `::warning` annotations, so they show up inline on the PR diff.
+
+### <a name="baseline"></a>Baseline — only fail on new escapes
+
+If you have existing mutants that survive and your team has accepted them, you can record them in a baseline file. Future runs only fail when a *new* mutant escapes — not an already-known one.
+
+```bash
+# First run: record the current survivors and exit 0
+go-mutesting --update-baseline ./...
+
+# Normal CI run: fail only if something new escapes
+go-mutesting --fail-on-escaped --baseline go-mutesting-baseline.json ./...
+```
+
+Commit `go-mutesting-baseline.json` to your repo. The baseline uses stable mutant IDs — they survive refactors that shift line numbers without changing the actual code.
+
+### <a name="agentic-json"></a>LLM-ready report
+
+`--logger-agentic-json` writes `go-mutesting-agentic.json`. Each escaped mutant gets a stable ID, the diff, surrounding context lines, nearby test file paths, a plain-English description of what the mutator did, and a hint for writing a killing test. Feed it to an LLM to get targeted test suggestions.
+
+```bash
+go-mutesting --logger-agentic-json --quiet ./...
+```
+
+### <a name="progress"></a>Live progress
+
+When running in a terminal, go-mutesting shows a live progress line on stderr (killed / escaped / skip counts). It clears automatically before the final summary. It is suppressed in `--verbose`, `--debug`, and silent mode.
 
 ### <a name="mutation-annotations"></a>Mutation control via annotations
 

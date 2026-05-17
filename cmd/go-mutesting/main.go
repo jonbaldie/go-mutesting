@@ -21,10 +21,12 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/jonbaldie/go-mutesting/internal/annotation"
+	"github.com/jonbaldie/go-mutesting/internal/baseline"
 	"github.com/jonbaldie/go-mutesting/internal/console"
 	"github.com/jonbaldie/go-mutesting/internal/coverage"
 	"github.com/jonbaldie/go-mutesting/internal/filter"
@@ -57,6 +59,12 @@ const (
 	returnError
 	returnMsiThresholdNotMet // exit 4: quality gate failed
 )
+
+// isTerminal reports whether stderr is an interactive terminal.
+func isTerminal() bool {
+	fi, err := os.Stderr.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
 
 func checkArguments(args []string, opts *models.Options) (bool, int) {
 	p := flags.NewNamedParser("go-mutesting", flags.None)
@@ -145,6 +153,12 @@ func mainCmd(args []string) int {
 		return exitError("Could not find any suitable Go source files")
 	}
 
+	// Load baseline once; nil means no baseline file active (opt-in feature).
+	bl, err := baseline.Load(opts.Baseline.File)
+	if err != nil {
+		return exitError("Cannot load baseline: %v", err)
+	}
+
 	if opts.Files.ListFiles {
 		for _, file := range files {
 			fmt.Println(file)
@@ -226,8 +240,9 @@ MUTATOR:
 	report := &models.Report{}
 	var reportMu sync.Mutex
 
-	// Detect module path for coverage profile matching.
+	// Detect module path for coverage profile matching, and module root for relative path output.
 	modulePath := detectModulePath()
+	moduleRoot := detectModuleRoot()
 
 	// Load git diff changed lines when --git-diff-lines is set.
 	var gitChangedLines gitdiff.ChangedLines
@@ -322,6 +337,33 @@ MUTATOR:
 		}
 	}
 
+	// Live progress on stderr: show running kill/escape/skip counts.
+	// Suppressed when verbose/debug (individual lines already appear) or silent.
+	var stopProgress chan struct{}
+	if isTerminal() && !opts.General.Verbose && !opts.General.Debug && !opts.Config.SilentMode && !opts.Exec.NoExec {
+		stopProgress = make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(200 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					reportMu.Lock()
+					k := report.Stats.KilledCount
+					e := report.Stats.EscapedCount
+					s := report.Stats.SkippedCount
+					n := report.Stats.NotCoveredCount
+					reportMu.Unlock()
+					fmt.Fprintf(os.Stderr, "\rMutating: killed=%-4d escaped=%-4d skip=%-4d not-covered=%-4d",
+						k, e, s, n)
+				case <-stopProgress:
+					fmt.Fprintf(os.Stderr, "\r\033[K")
+					return
+				}
+			}
+		}()
+	}
+
 	for _, importPkg := range pkgs {
 		coverProfile := coverProfileForPkg(importPkg.Files)
 		if coverProfile != nil {
@@ -390,6 +432,11 @@ MUTATOR:
 		jobWg.Wait()
 	}
 
+	// Stop live progress before printing the summary line.
+	if stopProgress != nil {
+		close(stopProgress)
+	}
+
 	if !opts.General.DoNotRemoveTmpFolder {
 		err = os.RemoveAll(tmpDir)
 		if err != nil {
@@ -399,6 +446,15 @@ MUTATOR:
 	}
 
 	report.Calculate()
+
+	// Write baseline and exit 0 — do not run quality gates.
+	if opts.Baseline.Update {
+		if err := baseline.Write(opts.Baseline.File, report.Escaped, moduleRoot); err != nil {
+			return exitError("Cannot write baseline: %v", err)
+		}
+		fmt.Printf("Baseline written to %q (%d surviving mutant(s))\n", opts.Baseline.File, len(report.Escaped))
+		return returnOk
+	}
 
 	if !opts.Exec.NoExec {
 		if !opts.Config.SilentMode {
@@ -425,6 +481,13 @@ MUTATOR:
 		console.Verbose(opts, "Save summary into %q", models.ReportSummaryJSONFileName)
 	}
 
+	if opts.Logger.AgenticJSON {
+		if err = reportmaker.MakeAgenticJSONReport(*report, moduleRoot); err != nil {
+			return exitError(err.Error())
+		}
+		console.Verbose(opts, "Save agentic report into %q", models.ReportAgenticJSONFileName)
+	}
+
 	if opts.Config.HTMLOutput || opts.General.HTMLOutput {
 		err = reportmaker.MakeHTMLReport(*report)
 		if err != nil {
@@ -434,7 +497,7 @@ MUTATOR:
 		console.Verbose(opts, "Save report into %q", models.ReportHTMLFileName)
 	}
 
-	return checkQualityGates(opts, report)
+	return checkQualityGates(opts, report, bl, moduleRoot)
 }
 
 // printSummary prints the final mutation testing summary including per-mutator breakdown.
@@ -497,7 +560,7 @@ func printGitHubAnnotations(report *models.Report) {
 
 // checkQualityGates returns returnMsiThresholdNotMet if configured thresholds
 // are not met, otherwise returnOk.
-func checkQualityGates(opts *models.Options, report *models.Report) int {
+func checkQualityGates(opts *models.Options, report *models.Report, bl *baseline.File, moduleRoot string) int {
 	// When no mutations were generated (e.g. --git-diff-lines on an unchanged
 	// package), skip threshold checks rather than failing with 0% MSI.
 	if opts.Score.IgnoreMsiWithNoMutations && report.Stats.TotalMutantsCount == 0 {
@@ -519,9 +582,17 @@ func checkQualityGates(opts *models.Options, report *models.Report) int {
 	}
 
 	failed := false
-	if opts.Score.FailOnEscaped && report.Stats.EscapedCount > 0 {
-		fmt.Fprintf(os.Stderr, "%d mutant(s) escaped — use --fail-on-escaped requires all mutants to be killed\n", report.Stats.EscapedCount)
-		failed = true
+	if opts.Score.FailOnEscaped {
+		// With a baseline active, only new escapes (not in baseline) trigger failure.
+		newEscapes := bl.NewEscapes(report.Escaped, moduleRoot)
+		if len(newEscapes) > 0 {
+			qualifier := ""
+			if bl != nil {
+				qualifier = "new "
+			}
+			fmt.Fprintf(os.Stderr, "%d %smutant(s) escaped — kill them or run --update-baseline to accept\n", len(newEscapes), qualifier)
+			failed = true
+		}
 	}
 	if minMsi >= 0 && msiPct < minMsi {
 		fmt.Fprintf(os.Stderr, "MSI %.2f%% is below minimum required %.2f%%\n", msiPct, minMsi)
@@ -903,6 +974,22 @@ func detectModulePath() string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// detectModuleRoot returns the directory containing the module's go.mod file.
+// Used to compute relative file paths for baseline and agentic JSON output.
+func detectModuleRoot() string {
+	cmd := exec.Command("go", "env", "GOMOD")
+	cmd.Env = os.Environ()
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	gomod := strings.TrimSpace(string(out))
+	if gomod == "" || gomod == os.DevNull {
+		return ""
+	}
+	return filepath.Dir(gomod)
 }
 
 // runCoverageProfile runs go test -coverprofile for pkg and writes output to profilePath.
