@@ -46,7 +46,15 @@ type Options struct {
 	Logger struct {
 		GitHub      bool `long:"logger-github" description:"Emit escaped mutants as GitHub Actions ::warning annotations"`
 		SummaryJSON bool `long:"logger-summary-json" description:"Write a compact stats-only JSON to go-mutesting-summary.json"`
+		AgenticJSON bool `long:"logger-agentic-json" description:"Write go-mutesting-agentic.json with enriched escaped-mutant data designed for LLM consumption"`
 	} `group:"Logger options"`
+
+	// Baseline tracks known-surviving mutants so CI only fails on new regressions.
+	// When the baseline file does not exist, the check is skipped (opt-in).
+	Baseline struct {
+		File   string `long:"baseline" description:"Path to baseline file of known-surviving mutants" default:"go-mutesting-baseline.json"`
+		Update bool   `long:"update-baseline" description:"Write current escaped mutants to the baseline file then exit 0"`
+	} `group:"Baseline options"`
 
 	Test struct {
 		Recursive bool `long:"test-recursive" description:"Defines if the executer should test recursively"`

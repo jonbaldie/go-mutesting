@@ -9,6 +9,9 @@ var ReportHTMLFileName string = "go-mutesting-report.html"
 // ReportSummaryJSONFileName File name for the compact stats-only JSON summary
 var ReportSummaryJSONFileName string = "go-mutesting-summary.json"
 
+// ReportAgenticJSONFileName File name for the LLM-optimised escaped-mutant report
+var ReportAgenticJSONFileName string = "go-mutesting-agentic.json"
+
 // Report holds the complete mutation testing result.
 type Report struct {
 	Stats        Stats          `json:"stats"`
