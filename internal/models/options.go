@@ -9,6 +9,7 @@ type Options struct {
 		Noop                 bool   `long:"noop" description:"Run the test suite once without any mutations first; exit with an error if it fails"`
 		Quiet                bool   `long:"quiet" description:"Only print escaped mutants and the summary (suppress killed/skipped output)"`
 		Verbose              bool   `long:"verbose" description:"Verbose log output"`
+		Workers              int    `long:"workers" description:"Number of parallel workers for mutation execution (0 = all CPUs). Forced to 1 when --exec is set." default:"0"`
 		Config               string `long:"config" description:"Path to config file"`
 		HTMLOutput           bool   `long:"html-output" description:"Generates a go-mutesting-report.html file after testing is complete"`
 	} `group:"General options"`
