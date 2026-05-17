@@ -62,6 +62,8 @@ Although the definition states that the main purpose of mutation testing is find
 
 Mutation testing is also especially interesting for comparing automatically generated test suites with manually written test suites. This was the original intention of go-mutesting which is used to evaluate the generic fuzzing and delta-debugging framework [Tavor](https://github.com/zimmski/tavor).
 
+It is also one of the strongest tools available for keeping AI-generated code honest. AI tools write plausible-looking code that often slips past code review. Mutation testing checks whether your tests would actually catch a bug — not just whether the code looks right.
+
 ## <a name="how-do-i-use-go-mutesting"></a>How do I use go-mutesting?
 
 go-mutesting includes a binary which is go-getable.
