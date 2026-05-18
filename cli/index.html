@@ -883,6 +883,14 @@
 <td style="text-align: left;"><code>--coverage</code></td>
 <td style="text-align: left;">Run <code>go test -coverprofile</code> first; exclude uncovered lines from covered-MSI</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>--per-test</code></td>
+<td style="text-align: left;">Build a per-test coverage map and run only the tests that cover each mutation. Best for packages with slow tests. Pairs well with <code>--coverage</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--test-flags</code></td>
+<td style="text-align: left;">Extra flags passed to every <code>go test</code> call (e.g. <code>--test-flags=-short</code>). Use the <code>=</code> form for values starting with a dash. Ignored when <code>--exec</code> is set.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="filtering">Filtering<a class="headerlink" href="#filtering" title="Permanent link">&para;</a></h2>
