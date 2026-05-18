@@ -10,7 +10,6 @@ import (
 	"go/printer"
 	"go/token"
 	"go/types"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -667,7 +666,7 @@ func mutate(
 			mutant.Mutator.OriginalSourceCode = string(originalSourceCode)
 
 			mutationFile := fmt.Sprintf("%s.%d", mutatedFile, mutationID)
-			checksum, duplicate, err := saveAST(mutationBlackList, mutationFile, fset, src)
+			checksum, duplicate, err := saveAST(mutationBlackList, mutationFile, fset, src, originalSourceCode)
 			if err != nil {
 				out := fmt.Sprintf("INTERNAL ERROR %s\n", err.Error())
 				fmt.Printf("%s", out)
@@ -947,17 +946,29 @@ func main() {
 	os.Exit(mainCmd(os.Args[1:]))
 }
 
-func saveAST(mutationBlackList map[string]struct{}, file string, fset *token.FileSet, node ast.Node) (string, bool, error) {
+// saveAST writes the mutated AST to file and returns a stable checksum.
+// The checksum is derived from only the lines that differ between original
+// and mutated source, so it survives edits to surrounding code that would
+// otherwise invalidate a blacklist entry.
+func saveAST(mutationBlackList map[string]struct{}, file string, fset *token.FileSet, node ast.Node, originalContent []byte) (string, bool, error) {
 	var buf bytes.Buffer
 
-	h := md5.New()
+	if err := printer.Fprint(&buf, fset, node); err != nil {
+		return "", false, err
+	}
 
-	err := printer.Fprint(io.MultiWriter(h, &buf), fset, node)
+	mutatedSrc, err := format.Source(buf.Bytes())
 	if err != nil {
 		return "", false, err
 	}
 
-	checksum := fmt.Sprintf("%x", h.Sum(nil))
+	// Normalize the original so formatting differences don't create phantom diffs.
+	fmtOrig, fmtErr := format.Source(originalContent)
+	if fmtErr != nil {
+		fmtOrig = originalContent
+	}
+
+	checksum := stableMutationKey(fmtOrig, mutatedSrc)
 
 	if _, ok := mutationBlackList[checksum]; ok {
 		return checksum, true, nil
@@ -965,17 +976,33 @@ func saveAST(mutationBlackList map[string]struct{}, file string, fset *token.Fil
 
 	mutationBlackList[checksum] = struct{}{}
 
-	src, err := format.Source(buf.Bytes())
-	if err != nil {
-		return "", false, err
-	}
+	return checksum, false, os.WriteFile(file, mutatedSrc, 0666)
+}
 
-	err = os.WriteFile(file, src, 0666)
-	if err != nil {
-		return "", false, err
+// stableMutationKey returns an MD5 hash of only the lines that differ between
+// original and mutated source. This is stable when unrelated surrounding code
+// changes, unlike hashing the entire file.
+func stableMutationKey(original, mutated []byte) string {
+	h := md5.New()
+	oLines := strings.Split(string(original), "\n")
+	mLines := strings.Split(string(mutated), "\n")
+	n := len(oLines)
+	if len(mLines) > n {
+		n = len(mLines)
 	}
-
-	return checksum, false, nil
+	for i := 0; i < n; i++ {
+		o, m := "", ""
+		if i < len(oLines) {
+			o = oLines[i]
+		}
+		if i < len(mLines) {
+			m = mLines[i]
+		}
+		if o != m {
+			fmt.Fprintf(h, "-%s\n+%s\n", o, m)
+		}
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 // detectModulePath returns the current module path via `go list -m`.

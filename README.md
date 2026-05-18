@@ -168,14 +168,14 @@ The summary shows the **mutation score** (MSI): killed / total. For the example 
 
 ### <a name="black-list-false-positives"></a>Blacklist false positives
 
-Mutation testing can generate many false positives since mutation algorithms do not fully understand the given source code. `early exits` are one common example. They can be implemented as optimizations and will almost always trigger a false-positive since the unoptimized code path will be used which will lead to the same result. go-mutesting is meant to be used as an addition to automatic test suites. It is therefore necessary to mark such mutations as false-positives. This is done with the `--blacklist` argument. The argument defines a file which contains in every line a MD5 checksum of a mutation. These checksums can then be used to ignore mutations.
+Mutation testing can produce false positives when the mutated code path is never reachable, or when the unoptimized path produces the same result as the optimized one. These cases are not bugs in your tests — they just aren't worth tracking down.
 
-> **Note**: The blacklist feature is currently badly implemented as a change in the original source code will change all checksums.
+Use `--blacklist` with a file that lists the MD5 checksum of each mutation to ignore (one per line). Checksums are derived from only the lines that actually changed, not the whole file, so they stay valid when unrelated code in the same file is edited.
 
-The example output of the [How do I use go-mutesting?](#how-do-i-use-go-mutesting) section describes a mutation `example.go.6` which has the checksum `5b1ca0cfedd786d9df136a0e042df23a`. If we want to mark this mutation as a false-positive, we simple create a file with the following content.
+To get the checksum for a mutation, run go-mutesting normally and copy the hex string printed next to the mutation. For example, if a mutation's checksum is `a1b2c3d4...`, create a file:
 
 ```
-5b1ca0cfedd786d9df136a0e042df23a
+a1b2c3d4e5f6...
 ```
 
 The blacklist file, which is named `example.blacklist` in this example, can then be used to invoke go-mutesting.
@@ -669,7 +669,7 @@ The config contains the following parameters:
 | silent_mode          | false         | Do not print mutation stats.                                                                                                                                       |
 | min_msi              | 0             | Minimum required MSI (0–100). 0 means no gate.                                                                                                                    |
 | min_covered_msi      | 0             | Minimum required covered-code MSI (0–100). 0 means no gate.                                                                                                       |
-| exclude_dirs         | []string(nil) | Directories for excluding. In fact, there are not directories. These are the prefix for a path when we scan a file system. So this parameter is sensitive for args |
+| exclude_dirs         | []string(nil) | File path prefixes to skip. Any file whose path starts with one of these strings is excluded. `vendor/` skips all files under vendor; `internal/generated` skips any path starting with that string. |
 
 ## <a name="write-mutators"></a>How do I write my own mutators?
 
@@ -679,26 +679,16 @@ Additionally each mutator has to be registered with the `Register` function of t
 
 Examples for mutators can be found in the [github.com/jonbaldie/go-mutesting/v2/mutator](https://pkg.go.dev/github.com/jonbaldie/go-mutesting/v2/mutator) package and its sub-packages.
 
-## <a name="other-projects"></a>Other mutation testing projects and their flaws
+## <a name="other-projects"></a>Other mutation testing tools for Go
 
-go-mutesting is not the first project to implement mutation testing for Go source code. A quick search uncovers the following projects.
+The two most active alternatives are [gremlins](https://github.com/singerdmx/gremlins) and the upstream [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting) fork this project is based on.
 
-- https://github.com/darkhelmet/manbearpig
-- https://github.com/kisielk/mutator
-- https://github.com/StefanSchroeder/Golang-Mutation-testing
+**gremlins** is well-maintained and simple to use. It has a clean CLI and a solid set of mutators. It does not have MSI quality gates, a baseline file, coverage-aware filtering, or a git-diff mode, so it works well for local exploration but is harder to wire into CI in a way that fails only on new regressions.
 
-All of them have significant flaws in comparison to go-mutesting:
+**avito-tech/go-mutesting** is the direct upstream. This fork adds everything in the [feature table](#this-fork) at the top of this README.
 
-- Only one type (or even one case) of mutation is implemented.
-- Can only be used for one mutator at a time (manbearpig, Golang-Mutation-testing).
-- Mutation is done by content which can lead to lots of invalid mutations (Golang-Mutation-testing).
-- New mutators are not easily implemented and integrated.
-- Can only be used for one package or file at a time.
-- Other scenarios as `go test` cannot be applied.
-- Do not properly clean up or handle fatal failures.
-- No automatic tests to ensure that the algorithms are working at all.
-- Uses another language (Golang-Mutation-testing).
+If you want the smallest possible tool to run locally and see which mutants survive, gremlins is a reasonable choice. If you want to enforce mutation score thresholds in CI, track accepted escapes in a baseline, or pipe results to an LLM for test suggestions, this tool is the better fit.
 
 ## <a name="feature-request"></a>Can I make feature requests and report bugs and problems?
 
-Sure, just submit an [issue via the project tracker](https://github.com/jonbaldie/go-mutesting/v2/issues/new) and we will see what I can do.
+Sure, just submit an [issue via the project tracker](https://github.com/jonbaldie/go-mutesting/issues/new) and we will see what I can do.
