@@ -44,6 +44,8 @@ Targets can be Go source files, directories, or import paths. The `...` wildcard
 | Flag | Description |
 | :--- | :---------- |
 | `--coverage` | Run `go test -coverprofile` first; exclude uncovered lines from covered-MSI |
+| `--per-test` | Build a per-test coverage map and run only the tests that cover each mutation. Best for packages with slow tests. Pairs well with `--coverage`. |
+| `--test-flags` | Extra flags passed to every `go test` call (e.g. `--test-flags=-short`). Use the `=` form for values starting with a dash. Ignored when `--exec` is set. |
 
 ## Filtering
 

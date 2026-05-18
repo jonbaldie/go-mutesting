@@ -13,6 +13,8 @@ This is an actively maintained fork of [avito-tech/go-mutesting](https://github.
 | Quality gates — fail CI below a score | `--min-msi`, `--min-covered-msi` |
 | Git diff filter — only mutate changed lines | `--git-diff-lines` |
 | Coverage-aware MSI | `--coverage` |
+| Per-test filtering — run only tests that cover each mutation | `--per-test` |
+| Extra flags for every `go test` call | `--test-flags` |
 | GitHub Actions annotations | `--logger-github` |
 | Compact stats JSON for badges/dashboards | `--logger-summary-json` |
 | Baseline file — only fail on *new* escapes | `--baseline`, `--update-baseline` |

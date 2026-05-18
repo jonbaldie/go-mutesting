@@ -20,7 +20,7 @@ All packages pass. `internal/importing` and `internal/parser` were once broken i
 | `internal/models/` | `Report`, `Stats`, `Mutant` types; MSI and quality gate logic |
 | `internal/gitdiff/` | Git diff line filter for `--git-diff-lines` |
 | `internal/filter/` | Annotation and skip filters |
-| `internal/coverage/` | Coverage profile parsing for `--coverage` |
+| `internal/coverage/` | Coverage profile parsing (`--coverage`) and per-test coverage map (`--per-test`) |
 
 ## Self-mutation and quality gates
 
