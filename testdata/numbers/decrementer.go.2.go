@@ -6,9 +6,9 @@ package main
 import "fmt"
 
 func main() {
-	k := 99
+	k := 100
 	m := 10.1
-	n := 3.14
+	n := 2.14
 
 	fmt.Println(k)
 	fmt.Println(m)

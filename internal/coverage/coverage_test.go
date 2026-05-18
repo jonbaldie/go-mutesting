@@ -68,8 +68,33 @@ func TestParseProfile_SecondFile(t *testing.T) {
 }
 
 func TestParseProfile_MissingFile(t *testing.T) {
-	_, err := ParseProfile("/nonexistent/file.out", modulePath)
+	p, err := ParseProfile("/nonexistent/file.out", modulePath)
 	assert.Error(t, err)
+	assert.Nil(t, p)
+}
+
+func TestParseProfile_MalformedHitCount(t *testing.T) {
+	profile := "mode: set\ngithub.com/example/pkg/foo.go:1.1,5.3 2 notanint\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	assert.Error(t, err)
+	assert.Nil(t, p)
+}
+
+func TestParseProfile_MalformedStartLine(t *testing.T) {
+	profile := "mode: set\ngithub.com/example/pkg/foo.go:abc.1,5.3 2 1\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	assert.Error(t, err)
+	assert.Nil(t, p)
+}
+
+func TestParseProfile_MalformedEndLine(t *testing.T) {
+	profile := "mode: set\ngithub.com/example/pkg/foo.go:1.1,xyz.3 2 1\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	assert.Error(t, err)
+	assert.Nil(t, p)
 }
 
 func TestParseProfile_EmptyProfile(t *testing.T) {

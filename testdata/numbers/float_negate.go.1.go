@@ -6,11 +6,8 @@ package main
 import "fmt"
 
 func main() {
-	k := 99
-	m := 10.1
-	n := 3.14
+	x := 3.14
+	y := 0.0
 
-	fmt.Println(k)
-	fmt.Println(m)
-	fmt.Println(n)
+	fmt.Println(x, y)
 }

@@ -11,6 +11,6 @@ func TestMutatorNumbersIncrementer(t *testing.T) {
 		t,
 		MutatorNumbersIncrementer,
 		"../../testdata/numbers/incrementer.go",
-		2,
+		3,
 	)
 }
