@@ -34,7 +34,7 @@ func TestMutatorFloatNegate_MutatesNonZero(t *testing.T) {
 	mutations := MutatorFloatNegate(nil, nil, node)
 	assert.Len(t, mutations, 1)
 	mutations[0].Change()
-	assert.Equal(t, "-3.14", node.Value)
+	assert.Equal(t, "0.0", node.Value)
 	mutations[0].Reset()
 	assert.Equal(t, "3.14", node.Value)
 }

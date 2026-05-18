@@ -13,8 +13,9 @@ func init() {
 	mutator.Register("numbers/float-negate", MutatorFloatNegate)
 }
 
-// MutatorFloatNegate replaces a float literal with its negation (3.14 → -3.14).
-// Skips zero literals since negating zero is a no-op.
+// MutatorFloatNegate replaces a non-zero float literal with 0.0.
+// Using 0.0 (rather than prepending "-") avoids producing --x when the literal
+// is already the operand of a unary minus expression.
 func MutatorFloatNegate(_ *types.Package, _ *types.Info, node ast.Node) []mutator.Mutation {
 	n, ok := node.(*ast.BasicLit)
 	if !ok || n.Kind != token.FLOAT {
@@ -27,11 +28,9 @@ func MutatorFloatNegate(_ *types.Package, _ *types.Info, node ast.Node) []mutato
 	}
 
 	original := n.Value
-	negated := "-" + n.Value
-
 	return []mutator.Mutation{
 		{
-			Change: func() { n.Value = negated },
+			Change: func() { n.Value = "0.0" },
 			Reset:  func() { n.Value = original },
 		},
 	}

@@ -6,7 +6,7 @@ package main
 import "fmt"
 
 func main() {
-	x := -3.14
+	x := 0.0
 	y := 2.72
 
 	fmt.Println(x, y)

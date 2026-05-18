@@ -6,15 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
-## [Unreleased]
+## [v2.6.1] — 2026-05-18
 
 ### Added
-- `numbers/float-negate` mutator: replaces float literals with their negation (`3.14 → -3.14`).
+- `numbers/float-negate` mutator: replaces non-zero float literals with `0.0`.
 - `arithmetic/negate` mutator: inverts unary negation (`-x → +x`), closing the gap with gremlins' INVERT_NEGATIVES.
 - `statement/remove-self-assign` mutator: removes self-assignment statements (`a = a`), closing the gap with gremlins' REMOVE_SELF_ASSIGNMENTS.
 - `expression/context-nil` mutator: replaces `context.Context` arguments at call sites with `nil`.
 - `expression/error-guard` mutator: replaces `if err != nil` with `if false` and `if err == nil` with `if true`.
-- Package-level doc comment on `mutator` package explaining the custom-operator extension API.
+- Public mutator extension API: `mutator.Register` / `mutator.New` so third-party packages can add custom operators without forking.
+- MkDocs documentation site (Install, Quick Start, CLI reference, per-mutator pages, CI integration guide, JSON output schemas). Deployed to GitHub Pages.
 - This CHANGELOG.
 
 ---
