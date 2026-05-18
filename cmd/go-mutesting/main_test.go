@@ -167,6 +167,32 @@ func TestMainJSONReport(t *testing.T) {
 	}
 }
 
+func TestMainTestFlagsPassthrough(t *testing.T) {
+	// --test-flags is passed to each go test invocation.
+	// Using -count=1 forces real test runs (no cache) and should not break anything.
+	// The flag value must be passed with = to prevent go-flags from mis-parsing
+	// values that start with a hyphen.
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "1", "--test-flags=-count=1"},
+		returnOk,
+		"mutation score",
+	)
+}
+
+func TestMainPerTestFlag(t *testing.T) {
+	// --per-test builds a per-test coverage map and runs only covering tests
+	// for each mutation. Results must be identical to running without --per-test.
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "5", "--coverage", "--per-test"},
+		returnOk,
+		"mutation score",
+	)
+}
+
 func testMain(t *testing.T, root string, exec []string, expectedExitCode int, contains string) {
 	saveStderr := os.Stderr
 	saveStdout := os.Stdout

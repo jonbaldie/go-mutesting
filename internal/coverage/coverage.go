@@ -4,9 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Profile holds which source lines are covered by tests.
@@ -113,4 +116,136 @@ func (p *Profile) parseLine(line, modulePfx string) error {
 func parseLineNum(s string) (int, error) {
 	parts := strings.SplitN(s, ".", 2)
 	return strconv.Atoi(parts[0])
+}
+
+// PerTestProfile maps each (module-relative file path, line) to the sorted list
+// of test function names that cover it.  Callers look up by absolute file path
+// using CoveringTests; the match is done via suffix so it survives GOPATH/module
+// root variations.
+type PerTestProfile struct {
+	// relPath → line → []testName (sorted)
+	data map[string]map[int][]string
+}
+
+// CoveringTests returns the sorted test names that cover absFile at lineNum.
+// Returns nil when the line is not covered by any individually-run test.
+func (p *PerTestProfile) CoveringTests(absFile string, lineNum int) []string {
+	if p == nil || lineNum <= 0 {
+		return nil
+	}
+	absSlash := filepath.ToSlash(absFile)
+	for relPath, lines := range p.data {
+		if strings.HasSuffix(absSlash, "/"+relPath) || absSlash == relPath {
+			return lines[lineNum]
+		}
+	}
+	return nil
+}
+
+// BuildPerTestProfile runs each test function in pkgPath individually with
+// -coverprofile to build a map of which lines each test covers.  It uses up
+// to workers goroutines in parallel.  Returns nil on any hard failure (the
+// caller falls back to the full test suite).
+//
+// timeout is the per-test run timeout in seconds (same value as --exec-timeout).
+// extraTestFlags are appended before the explicit -run flag so that -short, -race,
+// etc. are consistent between profile-building and actual mutation test runs.
+func BuildPerTestProfile(pkgPath, modulePath, tmpDir string, timeout uint, workers int, extraTestFlags []string) (*PerTestProfile, error) {
+	// List test functions (not subtests).
+	listOut, err := exec.Command("go", "test", "-list", ".*", pkgPath).Output()
+	if err != nil {
+		return nil, fmt.Errorf("go test -list: %w", err)
+	}
+
+	var testNames []string
+	for _, line := range strings.Split(strings.TrimSpace(string(listOut)), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Test") || strings.HasPrefix(line, "Benchmark") || strings.HasPrefix(line, "Fuzz") {
+			testNames = append(testNames, line)
+		}
+	}
+	if len(testNames) == 0 {
+		return nil, nil
+	}
+
+	if workers <= 0 {
+		workers = 1
+	}
+
+	type entry struct {
+		name    string
+		profDir string
+	}
+
+	type result struct {
+		name string
+		prof *Profile
+	}
+
+	jobs := make(chan entry, len(testNames))
+	results := make(chan result, len(testNames))
+
+	for i := 0; i < workers; i++ {
+		go func() {
+			for job := range jobs {
+				profDir := filepath.Join(tmpDir, "per-test", job.name)
+				_ = os.MkdirAll(profDir, 0755)
+				profPath := filepath.Join(profDir, "coverage.out")
+
+				args := []string{"test"}
+				args = append(args, extraTestFlags...)
+				args = append(args,
+					"-run", "^"+job.name+"$",
+					"-coverprofile="+profPath,
+					"-covermode=set",
+					"-timeout", fmt.Sprintf("%ds", timeout),
+					pkgPath)
+				cmd := exec.Command("go", args...)
+				cmd.Env = os.Environ()
+				_ = cmd.Run() // test failures are expected; we only care about coverage
+
+				prof, err := ParseProfile(profPath, modulePath)
+				if err != nil {
+					results <- result{name: job.name, prof: nil}
+					continue
+				}
+				results <- result{name: job.name, prof: prof}
+			}
+		}()
+	}
+
+	for _, name := range testNames {
+		jobs <- entry{name: name}
+	}
+	close(jobs)
+
+	// Merge per-test profiles into a single PerTestProfile.
+	p := &PerTestProfile{data: make(map[string]map[int][]string)}
+	var mu sync.Mutex
+
+	for i := 0; i < len(testNames); i++ {
+		r := <-results
+		if r.prof == nil {
+			continue
+		}
+		mu.Lock()
+		for relPath, lines := range r.prof.coveredLines {
+			if p.data[relPath] == nil {
+				p.data[relPath] = make(map[int][]string)
+			}
+			for line := range lines {
+				p.data[relPath][line] = append(p.data[relPath][line], r.name)
+			}
+		}
+		mu.Unlock()
+	}
+
+	// Sort test lists for deterministic -run patterns.
+	for _, lines := range p.data {
+		for line := range lines {
+			sort.Strings(lines[line])
+		}
+	}
+
+	return p, nil
 }
