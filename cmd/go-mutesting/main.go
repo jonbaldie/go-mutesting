@@ -388,7 +388,7 @@ MUTATOR:
 			pkgPath := packageImportPath(importPkg.Files)
 			if pkgPath != "" {
 				var ptErr error
-				perTestProf, ptErr = coverage.BuildPerTestProfile(pkgPath, modulePath, tmpDir, opts.Exec.Timeout, numWorkers)
+				perTestProf, ptErr = coverage.BuildPerTestProfile(pkgPath, modulePath, tmpDir, opts.Exec.Timeout, numWorkers, extraTestFlags)
 				if ptErr != nil {
 					console.Verbose(opts, "Per-test coverage unavailable for %q: %v", pkgPath, ptErr)
 				} else if perTestProf != nil {

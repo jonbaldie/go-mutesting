@@ -148,7 +148,9 @@ func (p *PerTestProfile) CoveringTests(absFile string, lineNum int) []string {
 // caller falls back to the full test suite).
 //
 // timeout is the per-test run timeout in seconds (same value as --exec-timeout).
-func BuildPerTestProfile(pkgPath, modulePath, tmpDir string, timeout uint, workers int) (*PerTestProfile, error) {
+// extraTestFlags are appended before the explicit -run flag so that -short, -race,
+// etc. are consistent between profile-building and actual mutation test runs.
+func BuildPerTestProfile(pkgPath, modulePath, tmpDir string, timeout uint, workers int, extraTestFlags []string) (*PerTestProfile, error) {
 	// List test functions (not subtests).
 	listOut, err := exec.Command("go", "test", "-list", ".*", pkgPath).Output()
 	if err != nil {
@@ -190,19 +192,22 @@ func BuildPerTestProfile(pkgPath, modulePath, tmpDir string, timeout uint, worke
 				_ = os.MkdirAll(profDir, 0755)
 				profPath := filepath.Join(profDir, "coverage.out")
 
-				cmd := exec.Command("go", "test",
+				args := []string{"test"}
+				args = append(args, extraTestFlags...)
+				args = append(args,
 					"-run", "^"+job.name+"$",
 					"-coverprofile="+profPath,
 					"-covermode=set",
 					"-timeout", fmt.Sprintf("%ds", timeout),
 					pkgPath)
+				cmd := exec.Command("go", args...)
 				cmd.Env = os.Environ()
 				_ = cmd.Run() // test failures are expected; we only care about coverage
 
 				prof, err := ParseProfile(profPath, modulePath)
 				if err != nil {
 					results <- result{name: job.name, prof: nil}
-					return
+					continue
 				}
 				results <- result{name: job.name, prof: prof}
 			}
