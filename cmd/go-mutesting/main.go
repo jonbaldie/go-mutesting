@@ -65,6 +65,20 @@ func isTerminal() bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
+// statusVisible reports whether a given result status should be printed to the
+// terminal.  letter is one of: k=killed e=escaped s=skipped n=not-covered
+// x=errored.  --output-statuses takes precedence; --quiet falls back to showing
+// only escaped mutants.  Silent mode is handled separately by the caller.
+func statusVisible(opts *models.Options, letter byte) bool {
+	if opts.General.OutputStatuses != "" {
+		return strings.IndexByte(opts.General.OutputStatuses, letter) >= 0
+	}
+	if opts.General.Quiet {
+		return letter == 'e'
+	}
+	return true
+}
+
 func checkArguments(args []string, opts *models.Options) (bool, int) {
 	p := flags.NewNamedParser("go-mutesting", flags.None)
 
@@ -334,7 +348,7 @@ MUTATOR:
 		jobs  chan execJob
 		jobWg sync.WaitGroup
 	)
-	if !opts.Exec.NoExec {
+	if !opts.Exec.NoExec && !opts.General.DryRun {
 		jobs = make(chan execJob, numWorkers*2)
 		for i := 0; i < numWorkers; i++ {
 			jobWg.Add(1)
@@ -351,7 +365,7 @@ MUTATOR:
 	// Suppressed when verbose/debug (individual lines already appear) or silent.
 	var stopProgress chan struct{}
 	var progressWg sync.WaitGroup
-	if isTerminal() && !opts.General.Verbose && !opts.General.Debug && !opts.Config.SilentMode && !opts.Exec.NoExec {
+	if isTerminal() && !opts.General.Verbose && !opts.General.Debug && !opts.Config.SilentMode && !opts.Exec.NoExec && !opts.General.DryRun {
 		stopProgress = make(chan struct{})
 		progressWg.Add(1)
 		go func() {
@@ -377,14 +391,18 @@ MUTATOR:
 		}()
 	}
 
+	var dryRunTotal int
 	for _, importPkg := range pkgs {
-		coverProfile := coverProfileForPkg(importPkg.Files)
-		if coverProfile != nil {
-			report.HasCoverage = true
+		var coverProfile *coverage.Profile
+		if !opts.General.DryRun {
+			coverProfile = coverProfileForPkg(importPkg.Files)
+			if coverProfile != nil {
+				report.HasCoverage = true
+			}
 		}
 
 		var perTestProf *coverage.PerTestProfile
-		if opts.Exec.PerTest && !opts.Exec.NoExec && len(execs) == 0 {
+		if opts.Exec.PerTest && !opts.Exec.NoExec && !opts.General.DryRun && len(execs) == 0 {
 			pkgPath := packageImportPath(importPkg.Files)
 			if pkgPath != "" {
 				var ptErr error
@@ -448,8 +466,9 @@ MUTATOR:
 					}
 				}
 			} else {
-				_ = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags)
+				mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags)
 			}
+			dryRunTotal += mutationID
 		}
 	}
 
@@ -472,6 +491,11 @@ MUTATOR:
 			panic(err)
 		}
 		console.Debug(opts, "Remove %q", tmpDir)
+	}
+
+	if opts.General.DryRun {
+		fmt.Printf("\nTotal: %d mutation(s) would be generated. No files written, no tests run.\n", dryRunTotal)
+		return returnOk
 	}
 
 	report.Calculate()
@@ -674,6 +698,12 @@ func mutate(
 		log.Fatal(err)
 	}
 
+	// In dry-run mode collect per-mutator counts and print after the file is done.
+	var dryRunCounts map[string]int
+	if opts.General.DryRun {
+		dryRunCounts = make(map[string]int)
+	}
+
 	for _, m := range mutators {
 		console.Debug(opts, "Mutator %s", m.Name)
 
@@ -685,6 +715,16 @@ func mutate(
 			_, ok := <-changed
 			if !ok {
 				break
+			}
+
+			if opts.General.DryRun {
+				// Count only — no file writes, no job submission.
+				dryRunCounts[m.Name]++
+				changed <- true
+				<-changed
+				changed <- true
+				mutationID++
+				continue
 			}
 
 			mutant := models.Mutant{}
@@ -735,6 +775,23 @@ func mutate(
 		}
 	}
 
+	if opts.General.DryRun && len(dryRunCounts) > 0 {
+		// Print per-mutator counts for this file.
+		if rel, err := filepath.Rel(".", originalFile); err == nil {
+			fmt.Printf("%s\n", filepath.ToSlash(rel))
+		} else {
+			fmt.Printf("%s\n", originalFile)
+		}
+		mutatorNames := make([]string, 0, len(dryRunCounts))
+		for name := range dryRunCounts {
+			mutatorNames = append(mutatorNames, name)
+		}
+		sort.Strings(mutatorNames)
+		for _, name := range mutatorNames {
+			fmt.Printf("  %-40s %d\n", name, dryRunCounts[name])
+		}
+	}
+
 	return mutationID
 }
 
@@ -782,7 +839,7 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex) {
 
 	if notCovered {
 		out := fmt.Sprintf("NOT COVERED %s\n", msg)
-		if !opts.Config.SilentMode && !opts.General.Quiet {
+		if !opts.Config.SilentMode && statusVisible(opts, 'n') {
 			console.PrintSkip(out)
 		}
 		mutant.ProcessOutput = out
@@ -792,7 +849,7 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex) {
 		switch execExitCode {
 		case 0: // Tests failed → mutation killed
 			out := fmt.Sprintf("PASS %s\n", msg)
-			if !opts.Config.SilentMode && !opts.General.Quiet {
+			if !opts.Config.SilentMode && statusVisible(opts, 'k') {
 				console.PrintPass(out)
 			}
 			mutant.ProcessOutput = out
@@ -800,7 +857,7 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex) {
 			stats.Stats.KilledCount++
 		case 1: // Tests passed → mutation escaped
 			out := fmt.Sprintf("FAIL %s\n", msg)
-			if !opts.Config.SilentMode {
+			if !opts.Config.SilentMode && statusVisible(opts, 'e') {
 				console.PrintFail(out)
 			}
 			mutant.ProcessOutput = out
@@ -808,14 +865,14 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex) {
 			stats.Stats.EscapedCount++
 		case 2: // Did not compile → skip
 			out := fmt.Sprintf("SKIP %s\n", msg)
-			if !opts.Config.SilentMode && !opts.General.Quiet {
+			if !opts.Config.SilentMode && statusVisible(opts, 's') {
 				console.PrintSkip(out)
 			}
 			mutant.ProcessOutput = out
 			stats.Stats.SkippedCount++
 		default:
 			out := fmt.Sprintf("UNKNOWN exit code for %s\n", msg)
-			if !opts.Config.SilentMode {
+			if !opts.Config.SilentMode && statusVisible(opts, 'x') {
 				console.PrintUnknown(out)
 			}
 			mutant.ProcessOutput = out
@@ -921,12 +978,12 @@ func mutateExec(
 
 		switch execExitCode {
 		case 0: // Tests passed → FAIL (mutation escaped)
-			if !opts.Config.SilentMode {
+			if !opts.Config.SilentMode && !opts.General.NoDiffs {
 				console.PrintDiff(diff)
 			}
 			execExitCode = 1
 		case 1: // Tests failed → PASS (mutation killed)
-			if opts.General.Debug {
+			if opts.General.Debug && !opts.General.NoDiffs {
 				console.PrintDiff(diff)
 			}
 			execExitCode = 0
@@ -934,13 +991,15 @@ func mutateExec(
 			if opts.General.Verbose {
 				fmt.Println("Mutation did not compile")
 			}
-			if opts.General.Debug {
+			if opts.General.Debug && !opts.General.NoDiffs {
 				console.PrintDiff(diff)
 			}
 		default: // Unknown exit code
 			if !opts.Config.SilentMode {
 				fmt.Println("Unknown exit code")
-				console.PrintDiff(diff)
+				if !opts.General.NoDiffs {
+					console.PrintDiff(diff)
+				}
 			}
 		}
 

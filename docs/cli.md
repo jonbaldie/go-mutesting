@@ -23,7 +23,10 @@ Targets can be Go source files, directories, or import paths. The `...` wildcard
 
 | Flag | Description |
 | :--- | :---------- |
-| `--quiet` | Suppress killed/skipped lines; show only escaped mutants and summary |
+| `--dry-run` | Count mutations per file and mutator without generating files or running tests; prints a summary table and exits 0 |
+| `--no-diffs` | Suppress diff output for all mutation results (useful in CI where diffs are noisy and the JSON report is consumed instead) |
+| `--output-statuses` | Show only listed result statuses in the terminal: `k`=killed `e`=escaped `s`=skipped `n`=not-covered `x`=errored (e.g. `--output-statuses=ke`). Does not affect JSON reports. Overrides `--quiet` when set. |
+| `--quiet` | Suppress killed/skipped lines; show only escaped mutants and summary (equivalent to `--output-statuses=e`) |
 | `--verbose` | Print full test output for each mutation |
 | `--debug` | Print internal debug information |
 | `--logger-github` | Emit escaped mutants as `::warning` GitHub Actions annotations |

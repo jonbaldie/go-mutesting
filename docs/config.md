@@ -2,6 +2,14 @@
 
 go-mutesting can be configured via a YAML file. Pass it with `--config <path>`. No default config file is loaded automatically.
 
+A JSON Schema for editor validation and auto-completion is at [`schema/config-schema.json`](../schema/config-schema.json). Enable it in VS Code and other YAML-aware editors with a header comment:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jonbaldie/go-mutesting/master/schema/config-schema.json
+skip_without_test: true
+min_msi: 70
+```
+
 ## Schema
 
 ```yaml
