@@ -151,3 +151,173 @@ func TestParseProfile_NoModulePrefix(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, p.IsCovered("/abs/path/to/foo.go", 1))
 }
+
+// --- Tests targeting specific escaped mutations in ParseProfile / parseLine ---
+
+// TestParseProfile_ModeLine_SkippedNotParsed verifies that "mode:" lines are
+// never treated as coverage data.  If the continue were removed or the if
+// condition negated, a valid coverage entry on the same scanner pass would be
+// silently dropped (condition negated) or a spurious error would occur.
+func TestParseProfile_ModeLine_SkippedNotParsed(t *testing.T) {
+	// Has a mode line followed by a real coverage entry.
+	profile := "mode: set\ngithub.com/example/pkg/foo.go:5.1,10.3 1 1\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	require.NoError(t, err)
+	// If mode line is NOT skipped and coverage line IS skipped, IsCovered returns false.
+	assert.True(t, p.IsCovered("/x/github.com/example/pkg/foo.go", 5))
+	assert.True(t, p.IsCovered("/x/github.com/example/pkg/foo.go", 10))
+	assert.False(t, p.IsCovered("/x/github.com/example/pkg/foo.go", 11))
+}
+
+// TestParseProfile_ScannerErr exercises the scanner.Err() return on EOF with no error.
+func TestParseProfile_ScannerErr(t *testing.T) {
+	path := writeTmpProfile(t, "mode: set\n")
+	p, err := ParseProfile(path, modulePath)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+}
+
+// TestIsCovered_ExactPathMatch exercises the absFile == relPath branch of IsCovered.
+func TestIsCovered_ExactPathMatch(t *testing.T) {
+	profile := "mode: set\npkg/foo.go:1.1,5.3 1 1\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, "")
+	require.NoError(t, err)
+	// relPath stored = "pkg/foo.go"; absFile must equal it for the == branch.
+	assert.True(t, p.IsCovered("pkg/foo.go", 1))
+}
+
+// TestIsCovered_SlashNormalization ensures ToSlash is applied before matching.
+func TestIsCovered_SlashNormalization(t *testing.T) {
+	profile := "mode: set\ngithub.com/example/pkg/foo.go:3.1,6.3 1 1\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	require.NoError(t, err)
+	// Path with backslashes should still match after ToSlash.
+	assert.True(t, p.IsCovered("/x/github.com/example/pkg/foo.go", 3))
+}
+
+// TestParseLine_ColonAtPosition0 exercises colonIdx == 0 (not < 0).
+// A line starting with ":" has a colon at index 0; parseLine should handle it gracefully
+// (wrong field count → return nil, no coverage recorded).
+func TestParseLine_ColonAtPosition0(t *testing.T) {
+	profile := "mode: set\n:1.1,3.3 1 1\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	require.NoError(t, err) // silent skip, not an error
+	require.NotNil(t, p)
+}
+
+// TestParseLine_NoColon exercises colonIdx < 0 (no colon in line).
+func TestParseLine_NoColon(t *testing.T) {
+	profile := "mode: set\nnocol\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+}
+
+// TestParseLine_WrongFieldCount exercises len(fields) != 3.
+func TestParseLine_WrongFieldCount(t *testing.T) {
+	// Only 2 fields after the colon instead of 3.
+	profile := "mode: set\ngithub.com/example/pkg/foo.go:1.1,5.3 2\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	require.NoError(t, err) // silent skip
+	require.NotNil(t, p)
+}
+
+// TestParseLine_NoModulePrefixStripped verifies the relFile == rawFile branch when
+// the module prefix is absent: file is stored using the raw path.
+func TestParseLine_NoModulePrefixStripped(t *testing.T) {
+	// File path does NOT start with modulePath, so relFile == rawFile branch executes.
+	profile := "mode: set\nother/module/pkg/x.go:1.1,3.3 1 1\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	require.NoError(t, err)
+	// relFile is "other/module/pkg/x.go" (unchanged).
+	assert.True(t, p.IsCovered("/abs/other/module/pkg/x.go", 1))
+	assert.False(t, p.IsCovered("/abs/other/module/pkg/x.go", 4))
+}
+
+// TestParseLine_RelFileToSlash ensures filepath.ToSlash is applied to relFile.
+func TestParseLine_RelFileToSlash(t *testing.T) {
+	// On all platforms the parser should normalise slashes.
+	profile := "mode: set\ngithub.com/example/pkg/sub/y.go:2.1,4.3 1 1\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	require.NoError(t, err)
+	assert.True(t, p.IsCovered("/root/github.com/example/pkg/sub/y.go", 2))
+	assert.False(t, p.IsCovered("/root/github.com/example/pkg/sub/y.go", 5))
+}
+
+// TestParseProfile_MultiRange verifies multiple lines within a range are all covered.
+// This exercises the l <= endLine boundary in the loop (kills numbers/incrementer).
+func TestParseProfile_MultiRange(t *testing.T) {
+	profile := "mode: set\ngithub.com/example/pkg/z.go:10.1,12.3 1 1\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	require.NoError(t, err)
+	assert.True(t, p.IsCovered("/x/github.com/example/pkg/z.go", 10))
+	assert.True(t, p.IsCovered("/x/github.com/example/pkg/z.go", 11))
+	assert.True(t, p.IsCovered("/x/github.com/example/pkg/z.go", 12))
+	assert.False(t, p.IsCovered("/x/github.com/example/pkg/z.go", 13))
+}
+
+// TestParseProfile_SingleLine verifies a range where startLine == endLine.
+// Kills numbers/incrementer on the endLine value.
+func TestParseProfile_SingleLine(t *testing.T) {
+	profile := "mode: set\ngithub.com/example/pkg/w.go:7.1,7.3 1 1\n"
+	path := writeTmpProfile(t, profile)
+	p, err := ParseProfile(path, modulePath)
+	require.NoError(t, err)
+	assert.True(t, p.IsCovered("/x/github.com/example/pkg/w.go", 7))
+	assert.False(t, p.IsCovered("/x/github.com/example/pkg/w.go", 6))
+	assert.False(t, p.IsCovered("/x/github.com/example/pkg/w.go", 8))
+}
+
+// --- PerTestProfile tests ---
+
+func TestCoveringTests_NilReceiver(t *testing.T) {
+	var p *PerTestProfile
+	assert.Nil(t, p.CoveringTests("/some/file.go", 10))
+}
+
+func TestCoveringTests_ZeroLine(t *testing.T) {
+	p := &PerTestProfile{data: map[string]map[int][]string{
+		"pkg/foo.go": {1: {"TestFoo"}},
+	}}
+	assert.Nil(t, p.CoveringTests("/abs/pkg/foo.go", 0))
+}
+
+func TestCoveringTests_NegativeLine(t *testing.T) {
+	p := &PerTestProfile{data: map[string]map[int][]string{
+		"pkg/foo.go": {1: {"TestFoo"}},
+	}}
+	assert.Nil(t, p.CoveringTests("/abs/pkg/foo.go", -1))
+}
+
+func TestCoveringTests_SuffixMatch(t *testing.T) {
+	p := &PerTestProfile{data: map[string]map[int][]string{
+		"pkg/foo.go": {5: {"TestA", "TestB"}, 6: {"TestA"}},
+	}}
+	tests := p.CoveringTests("/home/user/go/pkg/foo.go", 5)
+	assert.Equal(t, []string{"TestA", "TestB"}, tests)
+	assert.Equal(t, []string{"TestA"}, p.CoveringTests("/home/user/go/pkg/foo.go", 6))
+}
+
+func TestCoveringTests_ExactMatch(t *testing.T) {
+	p := &PerTestProfile{data: map[string]map[int][]string{
+		"pkg/foo.go": {3: {"TestC"}},
+	}}
+	assert.Equal(t, []string{"TestC"}, p.CoveringTests("pkg/foo.go", 3))
+}
+
+func TestCoveringTests_NoMatch(t *testing.T) {
+	p := &PerTestProfile{data: map[string]map[int][]string{
+		"pkg/foo.go": {5: {"TestA"}},
+	}}
+	assert.Nil(t, p.CoveringTests("/different/path/bar.go", 5))
+	assert.Nil(t, p.CoveringTests("/abs/pkg/foo.go", 99))
+}

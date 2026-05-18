@@ -138,6 +138,8 @@ type execJob struct {
 	coverProfile    *coverage.Profile
 	gitChangedLines gitdiff.ChangedLines
 	execs           []string
+	perTestProf     *coverage.PerTestProfile
+	extraTestFlags  []string
 }
 
 func mainCmd(args []string) int {
@@ -237,6 +239,11 @@ MUTATOR:
 		execs = strings.Fields(opts.Exec.Exec)
 	}
 
+	var extraTestFlags []string
+	if opts.Exec.TestFlags != "" && len(execs) == 0 {
+		extraTestFlags = strings.Fields(opts.Exec.TestFlags)
+	}
+
 	report := &models.Report{}
 	var reportMu sync.Mutex
 
@@ -270,7 +277,10 @@ MUTATOR:
 				if pkgPath == "" {
 					continue
 				}
-				cmd := exec.Command("go", "test", "-timeout", fmt.Sprintf("%ds", opts.Exec.Timeout), pkgPath)
+				noopArgs := []string{"test", "-timeout", fmt.Sprintf("%ds", opts.Exec.Timeout)}
+				noopArgs = append(noopArgs, extraTestFlags...)
+				noopArgs = append(noopArgs, pkgPath)
+				cmd := exec.Command("go", noopArgs...)
 				cmd.Env = os.Environ()
 				if out, err := cmd.CombinedOutput(); err != nil {
 					fmt.Fprintf(os.Stderr, "Noop check failed for %q — fix your tests before running mutation testing:\n%s\n", pkgPath, out)
@@ -373,6 +383,20 @@ MUTATOR:
 			report.HasCoverage = true
 		}
 
+		var perTestProf *coverage.PerTestProfile
+		if opts.Exec.PerTest && !opts.Exec.NoExec && len(execs) == 0 {
+			pkgPath := packageImportPath(importPkg.Files)
+			if pkgPath != "" {
+				var ptErr error
+				perTestProf, ptErr = coverage.BuildPerTestProfile(pkgPath, modulePath, tmpDir, opts.Exec.Timeout, numWorkers)
+				if ptErr != nil {
+					console.Verbose(opts, "Per-test coverage unavailable for %q: %v", pkgPath, ptErr)
+				} else if perTestProf != nil {
+					console.Verbose(opts, "Per-test coverage map built for %q", pkgPath)
+				}
+			}
+		}
+
 		for _, file := range importPkg.Files {
 			console.Verbose(opts, "Mutate %q", file)
 
@@ -420,11 +444,11 @@ MUTATOR:
 
 				for _, f := range astutil.Functions(src) {
 					if m.MatchString(f.Name.Name) {
-						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs)
+						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags)
 					}
 				}
 			} else {
-				_ = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs)
+				_ = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags)
 			}
 		}
 	}
@@ -641,7 +665,15 @@ func mutate(
 	coverProfile *coverage.Profile,
 	gitChangedLines gitdiff.ChangedLines,
 	jobs chan<- execJob,
+	perTestProf *coverage.PerTestProfile,
+	extraTestFlags []string,
 ) int {
+	// Read the original source once per file — it never changes during mutation.
+	originalSourceCode, err := os.ReadFile(originalFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for _, m := range mutators {
 		console.Debug(opts, "Mutator %s", m.Name)
 
@@ -653,11 +685,6 @@ func mutate(
 			_, ok := <-changed
 			if !ok {
 				break
-			}
-
-			originalSourceCode, err := os.ReadFile(originalFile)
-			if err != nil {
-				log.Fatal(err)
 			}
 
 			mutant := models.Mutant{}
@@ -693,6 +720,8 @@ func mutate(
 						coverProfile:    coverProfile,
 						gitChangedLines: gitChangedLines,
 						execs:           execs,
+						perTestProf:     perTestProf,
+						extraTestFlags:  extraTestFlags,
 					}
 				}
 			}
@@ -726,7 +755,7 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex) {
 		}
 	}
 
-	execExitCode := mutateExec(opts, job.pkg, job.originalFile, job.mutationFile, job.execs, &mutant)
+	execExitCode := mutateExec(opts, job.pkg, job.originalFile, job.mutationFile, job.execs, job.perTestProf, job.absFile, job.extraTestFlags, &mutant)
 
 	console.Debug(opts, "Exited with %d", execExitCode)
 
@@ -802,6 +831,9 @@ func mutateExec(
 	file string,
 	mutationFile string,
 	execs []string,
+	perTestProf *coverage.PerTestProfile,
+	absFile string,
+	extraTestFlags []string,
 	mutant *models.Mutant,
 ) (execExitCode int) {
 	if len(execs) == 0 {
@@ -850,10 +882,26 @@ func mutateExec(
 			pkgName += "/..."
 		}
 
-		goTestCmd := exec.Command("go", "test",
-			"-overlay="+overlayFile.Name(),
+		// Build per-test -run filter when a per-test profile is available.
+		// Falls back to the full suite when no tests specifically cover this line.
+		var runFilter string
+		if perTestProf != nil && startLine > 0 {
+			if tests := perTestProf.CoveringTests(absFile, int(startLine)); len(tests) > 0 {
+				runFilter = "^(" + strings.Join(tests, "|") + ")$"
+			}
+		}
+
+		goTestArgs := []string{"test",
+			"-overlay=" + overlayFile.Name(),
 			"-timeout", fmt.Sprintf("%ds", opts.Exec.Timeout),
-			pkgName)
+		}
+		goTestArgs = append(goTestArgs, extraTestFlags...)
+		if runFilter != "" {
+			goTestArgs = append(goTestArgs, "-run", runFilter)
+		}
+		goTestArgs = append(goTestArgs, pkgName)
+
+		goTestCmd := exec.Command("go", goTestArgs...)
 		goTestCmd.Env = os.Environ()
 
 		test, err := goTestCmd.CombinedOutput()
