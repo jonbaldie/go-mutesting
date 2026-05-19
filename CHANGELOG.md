@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
-## [Unreleased]
+## [v2.6.7] — 2026-05-19
 
 ### Added
 - `conditional/bool-literal` mutator: swaps `true`↔`false` in assignments and function call arguments.
@@ -209,4 +209,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.6...HEAD
+[v2.6.7]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.7
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.7...HEAD
