@@ -178,15 +178,16 @@ func closeReportFile(file *os.File, filename string) {
 
 // AgenticMutant describes one escaped mutant for LLM consumption.
 type AgenticMutant struct {
-	ID           string   `json:"id"`
-	File         string   `json:"file"`
-	Line         int64    `json:"line"`
-	Mutator      string   `json:"mutator"`
-	Description  string   `json:"description,omitempty"`
-	KillHint     string   `json:"kill_hint,omitempty"`
-	Diff         string   `json:"diff"`
-	ContextLines []string `json:"context_lines,omitempty"`
-	TestFiles    []string `json:"test_files,omitempty"`
+	ID               string   `json:"id"`
+	File             string   `json:"file"`
+	Line             int64    `json:"line"`
+	Mutator          string   `json:"mutator"`
+	Description      string   `json:"description,omitempty"`
+	KillHint         string   `json:"kill_hint,omitempty"`
+	Diff             string   `json:"diff"`
+	ContextStartLine int      `json:"context_start_line,omitempty"`
+	ContextLines     []string `json:"context_lines,omitempty"`
+	TestFiles        []string `json:"test_files,omitempty"`
 }
 
 type agenticReport struct {
@@ -194,6 +195,35 @@ type agenticReport struct {
 	Msi          float64         `json:"msi"`
 	EscapedCount int             `json:"escaped_count"`
 	Mutants      []AgenticMutant `json:"mutants"`
+}
+
+// generateInstanceDescription produces a diff-aware description for one escaped
+// mutant. For simple one-line changes it returns "Changes: <from> → <to>".
+// For multi-line or unparseable diffs it falls back to the static per-mutator
+// description.
+func generateInstanceDescription(mutatorName, diff string) string {
+	var fromLines, toLines []string
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "+++ ") || strings.HasPrefix(line, "@@ ") {
+			continue
+		}
+		if strings.HasPrefix(line, "-") {
+			fromLines = append(fromLines, strings.TrimPrefix(line, "-"))
+		} else if strings.HasPrefix(line, "+") {
+			toLines = append(toLines, strings.TrimPrefix(line, "+"))
+		}
+	}
+	if len(fromLines) == 1 && len(toLines) == 1 {
+		from := strings.TrimSpace(fromLines[0])
+		to := strings.TrimSpace(toLines[0])
+		if from != "" && to != "" && from != to {
+			return fmt.Sprintf("Changes: `%s` → `%s`", from, to)
+		}
+	}
+	if desc, ok := mutatorDescriptions[mutatorName]; ok {
+		return desc
+	}
+	return ""
 }
 
 // MakeAgenticJSONReport writes go-mutesting-agentic.json with enriched escaped-mutant
@@ -205,16 +235,19 @@ func MakeAgenticJSONReport(report models.Report, moduleRoot string) error {
 	for _, m := range report.Escaped {
 		relFile := toRelPath(m.Mutator.OriginalFilePath, moduleRoot)
 		id := baseline.MutantID(relFile, m.Mutator.MutatorName, m.Diff)
+		const contextRadius = 3
+		ctxLines, ctxStart := extractContextLines(m.Mutator.OriginalSourceCode, int(m.Mutator.OriginalStartLine), contextRadius)
 		mutants = append(mutants, AgenticMutant{
-			ID:           id,
-			File:         relFile,
-			Line:         m.Mutator.OriginalStartLine,
-			Mutator:      m.Mutator.MutatorName,
-			Description:  mutatorDescriptions[m.Mutator.MutatorName],
-			KillHint:     killHints[m.Mutator.MutatorName],
-			Diff:         m.Diff,
-			ContextLines: extractContextLines(m.Mutator.OriginalSourceCode, int(m.Mutator.OriginalStartLine), 3),
-			TestFiles:    findTestFiles(filepath.Dir(m.Mutator.OriginalFilePath), moduleRoot),
+			ID:               id,
+			File:             relFile,
+			Line:             m.Mutator.OriginalStartLine,
+			Mutator:          m.Mutator.MutatorName,
+			Description:      generateInstanceDescription(m.Mutator.MutatorName, m.Diff),
+			KillHint:         killHints[m.Mutator.MutatorName],
+			Diff:             m.Diff,
+			ContextStartLine: ctxStart,
+			ContextLines:     ctxLines,
+			TestFiles:        findTestFiles(filepath.Dir(m.Mutator.OriginalFilePath), moduleRoot),
 		})
 	}
 
@@ -245,15 +278,16 @@ func MakeAgenticJSONReport(report models.Report, moduleRoot string) error {
 }
 
 // extractContextLines returns up to radius lines before and after line (1-based)
-// from the given source string.
-func extractContextLines(source string, line, radius int) []string {
+// from the given source string, along with the 1-based line number of the first
+// returned line (context_start_line).
+func extractContextLines(source string, line, radius int) ([]string, int) {
 	if source == "" || line <= 0 {
-		return nil
+		return nil, 0
 	}
 	lines := strings.Split(source, "\n")
 	start := max(line-radius-1, 0)
 	end := min(line+radius-1, len(lines)-1)
-	return lines[start : end+1]
+	return lines[start : end+1], start + 1
 }
 
 func toRelPath(absOrRel, moduleRoot string) string {

@@ -142,6 +142,23 @@ func (p *PerTestProfile) CoveringTests(absFile string, lineNum int) []string {
 	return nil
 }
 
+// CountTests returns the number of test functions (Test*, Benchmark*, Fuzz*)
+// in pkgPath. Returns 0 on any error or when the package has no tests.
+func CountTests(pkgPath string) int {
+	out, err := exec.Command("go", "test", "-list", ".*", pkgPath).Output()
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Test") || strings.HasPrefix(line, "Benchmark") || strings.HasPrefix(line, "Fuzz") {
+			count++
+		}
+	}
+	return count
+}
+
 // BuildPerTestProfile runs each test function in pkgPath individually with
 // -coverprofile to build a map of which lines each test covers.  It uses up
 // to workers goroutines in parallel.  Returns nil on any hard failure (the
