@@ -813,8 +813,20 @@
 </thead>
 <tbody>
 <tr>
+<td style="text-align: left;"><code>--dry-run</code></td>
+<td style="text-align: left;">Count mutations per file and mutator without generating files or running tests; prints a summary table and exits 0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--no-diffs</code></td>
+<td style="text-align: left;">Suppress diff output for all mutation results (useful in CI where diffs are noisy and the JSON report is consumed instead)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--output-statuses</code></td>
+<td style="text-align: left;">Show only listed result statuses in the terminal: <code>k</code>=killed <code>e</code>=escaped <code>s</code>=skipped <code>n</code>=not-covered <code>x</code>=errored (e.g. <code>--output-statuses=ke</code>). Does not affect JSON reports. Overrides <code>--quiet</code> when set.</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>--quiet</code></td>
-<td style="text-align: left;">Suppress killed/skipped lines; show only escaped mutants and summary</td>
+<td style="text-align: left;">Suppress killed/skipped lines; show only escaped mutants and summary (equivalent to <code>--output-statuses=e</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--verbose</code></td>
