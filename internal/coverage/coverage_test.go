@@ -277,6 +277,47 @@ func TestParseProfile_SingleLine(t *testing.T) {
 	assert.False(t, p.IsCovered("/x/github.com/example/pkg/w.go", 8))
 }
 
+// --- CountTests tests ---
+
+func TestCountTests_RealPackage(t *testing.T) {
+	// arithmetic has multiple test functions; expect a positive count.
+	count := CountTests("github.com/jonbaldie/go-mutesting/v2/mutator/arithmetic")
+	assert.Positive(t, count, "arithmetic package should have tests")
+}
+
+func TestCountTests_NonexistentPackage(t *testing.T) {
+	count := CountTests("github.com/jonbaldie/go-mutesting/v2/nonexistent_pkg_xyzzy")
+	assert.Zero(t, count, "nonexistent package should return 0")
+}
+
+// --- BuildPerTestProfile tests ---
+
+func TestBuildPerTestProfile_RealPackage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: runs per-test coverage profiling")
+	}
+	tmp := t.TempDir()
+	prof, err := BuildPerTestProfile(
+		"github.com/jonbaldie/go-mutesting/v2/mutator/arithmetic",
+		"github.com/jonbaldie/go-mutesting/v2",
+		tmp, 30, 1, nil,
+	)
+	require.NoError(t, err)
+	assert.NotNil(t, prof, "arithmetic package should produce a per-test profile")
+}
+
+func TestBuildPerTestProfile_EmptyPackage(t *testing.T) {
+	// A package with no tests returns nil, nil.
+	tmp := t.TempDir()
+	prof, err := BuildPerTestProfile(
+		"github.com/jonbaldie/go-mutesting/v2/nonexistent_pkg_xyzzy",
+		"github.com/jonbaldie/go-mutesting/v2",
+		tmp, 30, 1, nil,
+	)
+	assert.Error(t, err)
+	assert.Nil(t, prof)
+}
+
 // --- PerTestProfile tests ---
 
 func TestCoveringTests_NilReceiver(t *testing.T) {

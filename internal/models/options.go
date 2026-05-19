@@ -33,12 +33,14 @@ type Options struct {
 	} `group:"Filter options"`
 
 	Exec struct {
-		Exec      string `long:"exec" description:"Execute this command for every mutation (by default the built-in exec command is used)"`
-		NoExec    bool   `long:"no-exec" description:"Skip the built-in exec command and just generate the mutations"`
-		Timeout   uint   `long:"exec-timeout" description:"Sets a timeout for the command execution (in seconds)" default:"10"`
-		Coverage  bool   `long:"coverage" description:"Run go test -coverprofile before mutating to compute covered-code MSI and mark uncovered mutants"`
-		PerTest   bool   `long:"per-test" description:"Build a per-test coverage map and run only covering tests for each mutation. Fastest on packages with slow tests; pairs well with --coverage."`
-		TestFlags string `long:"test-flags" description:"Extra flags passed to each 'go test' invocation. Use the = form to pass flag values: --test-flags='-short'. Ignored when --exec is set."`
+		Exec        string `long:"exec" description:"Execute this command for every mutation (by default the built-in exec command is used)"`
+		NoExec      bool   `long:"no-exec" description:"Skip the built-in exec command and just generate the mutations"`
+		Timeout     uint   `long:"exec-timeout" description:"Sets a timeout for the command execution (in seconds)" default:"10"`
+		RunMutantID string `long:"run-mutant-id" description:"Re-run only the mutant with this agentic-JSON ID (load go-mutesting-agentic.json and replay just that one mutation)"`
+		Coverage          bool    `long:"coverage" description:"Run go test -coverprofile before mutating to compute covered-code MSI and mark uncovered mutants"`
+		PerTest           bool    `long:"per-test" description:"Build a per-test coverage map and run only covering tests for each mutation. Fastest on packages with slow tests; pairs well with --coverage."`
+		TestFlags         string  `long:"test-flags" description:"Extra flags passed to each 'go test' invocation. Use the = form to pass flag values: --test-flags='-short'. Ignored when --exec is set."`
+		TimeoutCoefficient float64 `long:"timeout-coefficient" description:"Set per-mutation timeout as a multiple of the baseline test-suite run time (e.g. 3 = 3× the clean run). Overrides --exec-timeout when > 0." default:"0"`
 	} `group:"Exec options"`
 
 	// GitDiff limits mutation to lines changed since a git base ref.
@@ -50,6 +52,7 @@ type Options struct {
 
 	Logger struct {
 		GitHub      bool `long:"logger-github" description:"Emit escaped mutants as GitHub Actions ::warning annotations"`
+		GitLab      bool `long:"logger-gitlab" description:"Write go-mutesting-gitlab.json in GitLab Code Quality format (escaped mutants as code-quality issues)"`
 		SummaryJSON bool `long:"logger-summary-json" description:"Write a compact stats-only JSON to go-mutesting-summary.json"`
 		AgenticJSON bool `long:"logger-agentic-json" description:"Write go-mutesting-agentic.json with enriched escaped-mutant data designed for LLM consumption"`
 	} `group:"Logger options"`
@@ -90,5 +93,6 @@ type Options struct {
 		MinCoveredMsi        float64  `yaml:"min_covered_msi"`
 		DisableMutators      []string `yaml:"disable_mutators"`
 		EnableMutators       []string `yaml:"enable_mutators"`
+		IgnoreSourceLines    []string `yaml:"ignore_source_lines"`
 	}
 }

@@ -315,6 +315,65 @@ func findTestFiles(dir, moduleRoot string) []string {
 	return result
 }
 
+// gitLabIssue is one entry in the GitLab Code Quality JSON array.
+type gitLabIssue struct {
+	Type        string          `json:"type"`
+	Description string          `json:"description"`
+	Severity    string          `json:"severity"`
+	Fingerprint string          `json:"fingerprint"`
+	Location    gitLabLocation  `json:"location"`
+}
+
+type gitLabLocation struct {
+	Path  string        `json:"path"`
+	Lines gitLabLines   `json:"lines"`
+}
+
+type gitLabLines struct {
+	Begin int `json:"begin"`
+}
+
+// MakeGitLabReport writes go-mutesting-gitlab.json in GitLab Code Quality
+// format. Each escaped mutant becomes one issue entry. GitLab picks this up
+// automatically when the artifact path is configured in .gitlab-ci.yml.
+func MakeGitLabReport(report models.Report, moduleRoot string) error {
+	issues := make([]gitLabIssue, 0, len(report.Escaped))
+	for _, m := range report.Escaped {
+		relFile := toRelPath(m.Mutator.OriginalFilePath, moduleRoot)
+		id := fmt.Sprintf("%s:%d:%s", relFile, m.Mutator.OriginalStartLine, m.Mutator.MutatorName)
+		desc := fmt.Sprintf("Escaped mutant (%s) at %s:%d — no test kills this mutation",
+			m.Mutator.MutatorName, relFile, m.Mutator.OriginalStartLine)
+		issues = append(issues, gitLabIssue{
+			Type:        "issue",
+			Description: desc,
+			Severity:    "minor",
+			Fingerprint: id,
+			Location: gitLabLocation{
+				Path:  relFile,
+				Lines: gitLabLines{Begin: int(m.Mutator.OriginalStartLine)},
+			},
+		})
+	}
+
+	data, err := json.MarshalIndent(issues, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	file, err := createOrTruncateReportFile(models.ReportGitLabJSONFileName)
+	if err != nil {
+		return fmt.Errorf("Error while open/create GitLab report file: %w", err)
+	}
+	defer closeReportFile(file, models.ReportGitLabJSONFileName)
+
+	if file == nil {
+		return errors.New("cannot create file for GitLab report")
+	}
+
+	_, err = file.WriteString(string(data))
+	return err
+}
+
 func groupEscapedMutants(escaped []models.Mutant) map[string][]models.Mutant {
 	if len(escaped) == 0 {
 		return make(map[string][]models.Mutant)
