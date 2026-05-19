@@ -2,28 +2,34 @@
 
 go-mutesting is a mutation testing tool for Go. It tweaks your code in small ways and checks whether your tests catch the change. If they don't, that's a gap in your test suite worth closing.
 
-## This fork
+## Features
 
-This is an actively maintained fork of [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting). Key additions:
+Beyond finding escaped mutants, go-mutesting can enforce quality gates in CI — failing builds below a mutation score threshold, filtering to changed lines only, and ignoring previously-accepted survivors.
 
 | Feature | Flag |
 | :--- | :--- |
+| Quality gates — fail CI below a mutation score | `--min-msi`, `--min-covered-msi` |
+| Coverage-aware MSI — score covered lines separately | `--coverage` |
+| Baseline file — only fail on *new* escapes | `--baseline`, `--update-baseline` |
+| Git diff filter — only mutate changed lines in a PR | `--git-diff-lines` |
+| Per-test filtering — run only covering tests per mutant | `--per-test` |
 | Parallel execution (all CPUs by default) | `--workers N` |
-| Quiet mode — suppress killed/skip noise | `--quiet` |
-| Fine-grained output filter | `--output-statuses` |
-| Suppress diff output | `--no-diffs` |
-| Dry-run mode — count mutations without running tests | `--dry-run` |
-| Quality gates — fail CI below a score | `--min-msi`, `--min-covered-msi` |
-| Git diff filter — only mutate changed lines | `--git-diff-lines` |
-| Coverage-aware MSI | `--coverage` |
-| Per-test filtering — run only tests that cover each mutation | `--per-test` |
-| Extra flags for every `go test` call | `--test-flags` |
+| LLM-ready escaped-mutant report | `--logger-agentic-json` |
 | GitHub Actions annotations | `--logger-github` |
 | Compact stats JSON for badges/dashboards | `--logger-summary-json` |
-| Baseline file — only fail on *new* escapes | `--baseline`, `--update-baseline` |
-| LLM-ready escaped-mutant report | `--logger-agentic-json` |
 | Per-mutator allowlist / denylist in config | `enable_mutators`, `disable_mutators` |
+| Extra flags for every `go test` call | `--test-flags` |
+| Fine-grained output filter | `--output-statuses` |
+| Quiet mode — suppress killed/skip noise | `--quiet` |
+| Suppress diff output | `--no-diffs` |
+| Dry-run mode — count mutations without running tests | `--dry-run` |
 | Live progress display | automatic on TTY |
+
+```bash
+go install github.com/jonbaldie/go-mutesting/v2/cmd/go-mutesting@latest
+```
+
+Forked from [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting), itself a fork of [zimmski/go-mutesting](https://github.com/zimmski/go-mutesting).
 
 ## Quick example
 
