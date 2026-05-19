@@ -198,10 +198,13 @@ type AgenticMutant struct {
 	TestFiles        []string `json:"test_files,omitempty"`
 }
 
+const agenticReminder = "A mutant is an example of how this code could be wrong — it's not a script for the test. Don't assert on the mutant directly. Instead ask: if this code were buggy, what would a caller of the public API observe go wrong? Write a test for that."
+
 type agenticReport struct {
 	GeneratedAt  string          `json:"generated_at"`
 	Msi          float64         `json:"msi"`
 	EscapedCount int             `json:"escaped_count"`
+	Reminder     string          `json:"reminder"`
 	Mutants      []AgenticMutant `json:"mutants"`
 }
 
@@ -263,6 +266,7 @@ func MakeAgenticJSONReport(report models.Report, moduleRoot string) error {
 		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
 		Msi:          msi,
 		EscapedCount: len(report.Escaped),
+		Reminder:     agenticReminder,
 		Mutants:      mutants,
 	}
 
