@@ -8,29 +8,33 @@ Writes `go-mutesting-summary.json`. Useful for CI badges, dashboards, and downst
 
 ```json
 {
-  "total": 42,
-  "killed": 35,
-  "escaped": 5,
-  "errored": 0,
-  "skipped": 2,
-  "not_covered": 0,
+  "totalMutantsCount": 42,
+  "killedCount": 35,
+  "escapedCount": 5,
+  "errorCount": 0,
+  "skippedCount": 2,
+  "notCoveredCount": 0,
+  "timeOutCount": 0,
   "msi": 0.8333,
-  "covered_msi": 0.9211
+  "mutationCodeCoverage": 0,
+  "coveredCodeMsi": 0.9211
 }
 ```
 
 | Field | Type | Description |
 | :---- | :--- | :---------- |
-| `total` | int | Total mutations generated |
-| `killed` | int | Mutations caught by tests |
-| `escaped` | int | Mutations not caught (test gaps) |
-| `errored` | int | Mutations that caused a build or test error |
-| `skipped` | int | Mutations skipped (blacklisted or annotated) |
-| `not_covered` | int | Mutations on lines with no coverage (requires `--coverage`) |
+| `totalMutantsCount` | int | Total mutations generated |
+| `killedCount` | int | Mutations caught by tests |
+| `escapedCount` | int | Mutations not caught (test gaps) |
+| `errorCount` | int | Mutations that caused a build or test error |
+| `skippedCount` | int | Mutations skipped (blacklisted or annotated) |
+| `notCoveredCount` | int | Mutations on lines with no coverage (requires `--coverage`) |
+| `timeOutCount` | int | Mutations that timed out during testing |
 | `msi` | float | Mutation Score Indicator: killed / total, range 0–1 |
-| `covered_msi` | float | MSI restricted to covered lines only, range 0–1 |
+| `mutationCodeCoverage` | int | Lines covered by the coverage profile |
+| `coveredCodeMsi` | float | MSI restricted to covered lines only, range 0–1 |
 
-`msi` and `covered_msi` are in the 0–1 range (not 0–100).
+`msi` and `coveredCodeMsi` are in the 0–1 range (not 0–100).
 
 ## `--logger-agentic-json`
 
@@ -38,7 +42,10 @@ Writes `go-mutesting-agentic.json`. A richer payload designed for LLM consumptio
 
 ```json
 {
-  "survived_mutants": [
+  "generated_at": "2026-05-19T08:13:38Z",
+  "msi": 58.57,
+  "escaped_count": 5,
+  "mutants": [
     {
       "id": "abc123",
       "file": "pkg/foo/foo.go",
@@ -47,8 +54,8 @@ Writes `go-mutesting-agentic.json`. A richer payload designed for LLM consumptio
       "diff": "--- Original\n+++ Mutated\n...",
       "context_lines": ["func Foo() {", "  if x > 0 {", "  }"],
       "test_files": ["pkg/foo/foo_test.go"],
-      "description": "Emptied the true-branch of an if statement on line 42.",
-      "hint": "Add a test that enters the if-branch and asserts on its side-effect."
+      "description": "Removes an if-block body so the condition becomes a no-op",
+      "kill_hint": "Write a test that enters this branch and asserts the output or side effect it produces"
     }
   ]
 }
@@ -56,15 +63,18 @@ Writes `go-mutesting-agentic.json`. A richer payload designed for LLM consumptio
 
 | Field | Type | Description |
 | :---- | :--- | :---------- |
-| `id` | string | Stable hash of file + line + mutator — survives refactors that shift line numbers |
-| `file` | string | Path to the mutated file, relative to the module root |
-| `line` | int | Line number of the mutation |
-| `mutator` | string | Mutator name (e.g. `branch/if`, `statement/return`) |
-| `diff` | string | Unified diff of original vs mutated code |
-| `context_lines` | []string | Surrounding source lines for orientation |
-| `test_files` | []string | Test files in the same package |
-| `description` | string | Human-readable description of what the mutator changed |
-| `hint` | string | A concrete suggestion for a test that would kill this mutant |
+| `generated_at` | string | RFC 3339 timestamp of the run |
+| `msi` | float | Overall MSI as a percentage (0–100) |
+| `escaped_count` | int | Number of survived mutants |
+| `mutants[].id` | string | Stable hash of file + mutator + diff — survives refactors that shift line numbers |
+| `mutants[].file` | string | Path to the mutated file, relative to the module root |
+| `mutants[].line` | int | Line number of the mutation |
+| `mutants[].mutator` | string | Mutator name (e.g. `branch/if`, `statement/return`) |
+| `mutants[].diff` | string | Unified diff of original vs mutated code |
+| `mutants[].context_lines` | []string | Surrounding source lines for orientation |
+| `mutants[].test_files` | []string | Test files in the same package |
+| `mutants[].description` | string | Human-readable description of what the mutator changed |
+| `mutants[].kill_hint` | string | A concrete suggestion for a test that would kill this mutant |
 
 ### Usage with an LLM
 

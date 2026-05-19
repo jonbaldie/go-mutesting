@@ -159,4 +159,4 @@ Use `--disable <name>` to turn off a specific mutator:
 go-mutesting --disable statement/remove ./...
 ```
 
-Use `--print-mutators` to list all registered mutator names.
+Use `--list-mutators` to list all registered mutator names.
