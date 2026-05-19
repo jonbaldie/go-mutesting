@@ -22,9 +22,6 @@ type ChangedLines map[string][]LineRange
 // modified file's changed line ranges. Deleted-only hunks (count == 0) are
 // excluded — there is nothing to mutate on a removed line.
 func ParseChangedLines(base string) (ChangedLines, error) {
-	if base == "" {
-		base = "master"
-	}
 	out, err := exec.Command("git", "diff", "--unified=0", base).Output()
 	if err != nil {
 		return nil, fmt.Errorf("git diff --unified=0 %s: %w", base, err)

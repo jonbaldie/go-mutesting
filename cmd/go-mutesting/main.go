@@ -292,12 +292,16 @@ MUTATOR:
 	// Load git diff changed lines when --git-diff-lines is set.
 	var gitChangedLines gitdiff.ChangedLines
 	if opts.GitDiff.Lines {
+		base := opts.GitDiff.Base
+		if base == "" {
+			base = detectDefaultBranch()
+		}
 		var err error
-		gitChangedLines, err = gitdiff.ParseChangedLines(opts.GitDiff.Base)
+		gitChangedLines, err = gitdiff.ParseChangedLines(base)
 		if err != nil {
 			return exitError("Cannot load git diff: %v", err)
 		}
-		console.Verbose(opts, "Git diff filter active against %q (%d changed files)", opts.GitDiff.Base, len(gitChangedLines))
+		console.Verbose(opts, "Git diff filter active against %q (%d changed files)", base, len(gitChangedLines))
 	}
 
 	// Group files by package to enable per-package coverage runs.
@@ -416,6 +420,10 @@ MUTATOR:
 	}
 
 	var dryRunTotal int
+	var dryRunMutatorTotals map[string]int
+	if opts.General.DryRun {
+		dryRunMutatorTotals = make(map[string]int)
+	}
 	for _, importPkg := range pkgs {
 		var coverProfile *coverage.Profile
 		if !opts.General.DryRun {
@@ -429,6 +437,10 @@ MUTATOR:
 		if opts.Exec.PerTest && !opts.Exec.NoExec && !opts.General.DryRun && len(execs) == 0 {
 			pkgPath := packageImportPath(importPkg.Files)
 			if pkgPath != "" {
+				testCount := coverage.CountTests(pkgPath)
+				if testCount > 0 {
+					fmt.Printf("Building per-test coverage map for %q (%d tests)...\n", pkgPath, testCount)
+				}
 				var ptErr error
 				perTestProf, ptErr = coverage.BuildPerTestProfile(pkgPath, modulePath, tmpDir, opts.Exec.Timeout, numWorkers, extraTestFlags)
 				if ptErr != nil {
@@ -486,11 +498,11 @@ MUTATOR:
 
 				for _, f := range astutil.Functions(src) {
 					if m.MatchString(f.Name.Name) {
-						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags)
+						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags, dryRunMutatorTotals)
 					}
 				}
 			} else {
-				mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags)
+				mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags, dryRunMutatorTotals)
 			}
 			dryRunTotal += mutationID
 		}
@@ -518,6 +530,17 @@ MUTATOR:
 	}
 
 	if opts.General.DryRun {
+		if len(dryRunMutatorTotals) > 0 {
+			mutatorNames := make([]string, 0, len(dryRunMutatorTotals))
+			for name := range dryRunMutatorTotals {
+				mutatorNames = append(mutatorNames, name)
+			}
+			sort.Strings(mutatorNames)
+			fmt.Println("\nPer-mutator totals across all files:")
+			for _, name := range mutatorNames {
+				fmt.Printf("  %-40s %d\n", name, dryRunMutatorTotals[name])
+			}
+		}
 		fmt.Printf("\nTotal: %d mutation(s) would be generated. No files written, no tests run.\n", dryRunTotal)
 		return returnOk
 	}
@@ -713,6 +736,7 @@ func mutate(
 	jobs chan<- execJob,
 	perTestProf *coverage.PerTestProfile,
 	extraTestFlags []string,
+	dryRunGlobalTotals map[string]int,
 ) int {
 	// Read the original source once per file — it never changes during mutation.
 	originalSourceCode, err := os.ReadFile(originalFile)
@@ -742,6 +766,9 @@ func mutate(
 			if opts.General.DryRun {
 				// Count only — no file writes, no job submission.
 				dryRunCounts[m.Name]++
+				if dryRunGlobalTotals != nil {
+					dryRunGlobalTotals[m.Name]++
+				}
 				changed <- true
 				<-changed
 				changed <- true
@@ -1132,6 +1159,20 @@ func stableMutationKey(original, mutated []byte) string {
 		}
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// detectDefaultBranch returns the default remote branch name by inspecting
+// refs/remotes/origin/HEAD. Falls back to "master" when unavailable.
+func detectDefaultBranch() string {
+	out, err := exec.Command("git", "symbolic-ref", "refs/remotes/origin/HEAD").Output()
+	if err == nil {
+		// Output is "refs/remotes/origin/main\n" — extract the last segment.
+		ref := strings.TrimSpace(string(out))
+		if idx := strings.LastIndex(ref, "/"); idx >= 0 {
+			return ref[idx+1:]
+		}
+	}
+	return "master"
 }
 
 // detectModulePath returns the current module path via `go list -m`.

@@ -10,7 +10,7 @@ type Options struct {
 		DryRun               bool   `long:"dry-run" description:"Count mutations per file and mutator without generating files or running tests; prints a summary table and exits 0"`
 		NoDiffs              bool   `long:"no-diffs" description:"Suppress diff output for all mutation results (useful in CI where diffs are noisy and the JSON report is consumed instead)"`
 		OutputStatuses       string `long:"output-statuses" description:"Show only these result statuses in the terminal: k=killed e=escaped s=skipped n=not-covered x=errored (e.g. --output-statuses=ke). Does not affect JSON reports. Overrides --quiet when set."`
-		Quiet                bool   `long:"quiet" description:"Only print escaped mutants and the summary (suppress killed/skipped output)"`
+		Quiet                bool   `long:"quiet" description:"Only print escaped mutants and the summary (suppress killed/skipped output). Combine with --no-diffs to also suppress escaped-mutant diffs."`
 		Verbose              bool   `long:"verbose" description:"Verbose log output"`
 		Workers              int    `long:"workers" description:"Number of parallel workers for mutation execution (0 = all CPUs). Forced to 1 when --exec is set." default:"0"`
 		Config               string `long:"config" description:"Path to config file"`
@@ -45,7 +45,7 @@ type Options struct {
 	// Pair with --ignore-msi-with-no-mutations for clean CI on unchanged packages.
 	GitDiff struct {
 		Lines bool   `long:"git-diff-lines" description:"Only mutate lines changed since the git diff base"`
-		Base  string `long:"git-diff-base" description:"Git ref to diff against for --git-diff-lines" default:"master"`
+		Base  string `long:"git-diff-base" description:"Git ref to diff against for --git-diff-lines (default: auto-detected from origin/HEAD, falling back to master)"`
 	} `group:"Git diff options"`
 
 	Logger struct {
