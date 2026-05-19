@@ -670,15 +670,17 @@
 <h2 id="-logger-summary-json"><code>--logger-summary-json</code><a class="headerlink" href="#-logger-summary-json" title="Permanent link">&para;</a></h2>
 <p>Writes <code>go-mutesting-summary.json</code>. Useful for CI badges, dashboards, and downstream scripts.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;killed&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">35</span><span class="p">,</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">&quot;escaped&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">&quot;errored&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">&quot;skipped&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">&quot;not_covered&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">&quot;msi&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8333</span><span class="p">,</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">&quot;covered_msi&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.9211</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">}</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;totalMutantsCount&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;killedCount&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">35</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">&quot;escapedCount&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">&quot;errorCount&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">&quot;skippedCount&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">&quot;notCoveredCount&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">&quot;timeOutCount&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">&quot;msi&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8333</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">&quot;mutationCodeCoverage&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">&quot;coveredCodeMsi&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.9211</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">}</span>
 </code></pre></div>
 <table>
 <thead>
@@ -690,34 +692,39 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>total</code></td>
+<td style="text-align: left;"><code>totalMutantsCount</code></td>
 <td style="text-align: left;">int</td>
 <td style="text-align: left;">Total mutations generated</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>killed</code></td>
+<td style="text-align: left;"><code>killedCount</code></td>
 <td style="text-align: left;">int</td>
 <td style="text-align: left;">Mutations caught by tests</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>escaped</code></td>
+<td style="text-align: left;"><code>escapedCount</code></td>
 <td style="text-align: left;">int</td>
 <td style="text-align: left;">Mutations not caught (test gaps)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>errored</code></td>
+<td style="text-align: left;"><code>errorCount</code></td>
 <td style="text-align: left;">int</td>
 <td style="text-align: left;">Mutations that caused a build or test error</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>skipped</code></td>
+<td style="text-align: left;"><code>skippedCount</code></td>
 <td style="text-align: left;">int</td>
 <td style="text-align: left;">Mutations skipped (blacklisted or annotated)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>not_covered</code></td>
+<td style="text-align: left;"><code>notCoveredCount</code></td>
 <td style="text-align: left;">int</td>
 <td style="text-align: left;">Mutations on lines with no coverage (requires <code>--coverage</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>timeOutCount</code></td>
+<td style="text-align: left;">int</td>
+<td style="text-align: left;">Mutations that timed out during testing</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>msi</code></td>
@@ -725,30 +732,38 @@
 <td style="text-align: left;">Mutation Score Indicator: killed / total, range 0–1</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>covered_msi</code></td>
+<td style="text-align: left;"><code>mutationCodeCoverage</code></td>
+<td style="text-align: left;">int</td>
+<td style="text-align: left;">Lines covered by the coverage profile</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>coveredCodeMsi</code></td>
 <td style="text-align: left;">float</td>
 <td style="text-align: left;">MSI restricted to covered lines only, range 0–1</td>
 </tr>
 </tbody>
 </table>
-<p><code>msi</code> and <code>covered_msi</code> are in the 0–1 range (not 0–100).</p>
+<p><code>msi</code> and <code>coveredCodeMsi</code> are in the 0–1 range (not 0–100).</p>
 <h2 id="-logger-agentic-json"><code>--logger-agentic-json</code><a class="headerlink" href="#-logger-agentic-json" title="Permanent link">&para;</a></h2>
 <p>Writes <code>go-mutesting-agentic.json</code>. A richer payload designed for LLM consumption. Each survived mutant gets a stable ID, the unified diff, surrounding context lines, nearby test file paths, a plain-English description of the mutation, and a hint for writing a killing test.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;survived_mutants&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="p">{</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;abc123&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">      </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pkg/foo/foo.go&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="nt">&quot;line&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="nt">&quot;mutator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;branch/if&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">      </span><span class="nt">&quot;diff&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;--- Original\n+++ Mutated\n...&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">&quot;context_lines&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;func Foo() {&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;  if x &gt; 0 {&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;  }&quot;</span><span class="p">],</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">      </span><span class="nt">&quot;test_files&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;pkg/foo/foo_test.go&quot;</span><span class="p">],</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">      </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Emptied the true-branch of an if statement on line 42.&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">      </span><span class="nt">&quot;hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Add a test that enters the if-branch and asserts on its side-effect.&quot;</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">  </span><span class="p">]</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="p">}</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;generated_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-05-19T08:13:38Z&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;msi&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">58.57</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;escaped_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">&quot;mutants&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;abc123&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">      </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pkg/foo/foo.go&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">&quot;line&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">      </span><span class="nt">&quot;mutator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;branch/if&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">      </span><span class="nt">&quot;diff&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;--- Original\n+++ Mutated\n...&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">      </span><span class="nt">&quot;context_lines&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;func Foo() {&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;  if x &gt; 0 {&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;  }&quot;</span><span class="p">],</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">      </span><span class="nt">&quot;test_files&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;pkg/foo/foo_test.go&quot;</span><span class="p">],</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">      </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Removes an if-block body so the condition becomes a no-op&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">      </span><span class="nt">&quot;kill_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Write a test that enters this branch and asserts the output or side effect it produces&quot;</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">  </span><span class="p">]</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="p">}</span>
 </code></pre></div>
 <table>
 <thead>
@@ -760,47 +775,62 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>id</code></td>
+<td style="text-align: left;"><code>generated_at</code></td>
 <td style="text-align: left;">string</td>
-<td style="text-align: left;">Stable hash of file + line + mutator — survives refactors that shift line numbers</td>
+<td style="text-align: left;">RFC 3339 timestamp of the run</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>file</code></td>
+<td style="text-align: left;"><code>msi</code></td>
+<td style="text-align: left;">float</td>
+<td style="text-align: left;">Overall MSI as a percentage (0–100)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>escaped_count</code></td>
+<td style="text-align: left;">int</td>
+<td style="text-align: left;">Number of survived mutants</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mutants[].id</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">Stable hash of file + mutator + diff — survives refactors that shift line numbers</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mutants[].file</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">Path to the mutated file, relative to the module root</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>line</code></td>
+<td style="text-align: left;"><code>mutants[].line</code></td>
 <td style="text-align: left;">int</td>
 <td style="text-align: left;">Line number of the mutation</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>mutator</code></td>
+<td style="text-align: left;"><code>mutants[].mutator</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">Mutator name (e.g. <code>branch/if</code>, <code>statement/return</code>)</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>diff</code></td>
+<td style="text-align: left;"><code>mutants[].diff</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">Unified diff of original vs mutated code</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>context_lines</code></td>
+<td style="text-align: left;"><code>mutants[].context_lines</code></td>
 <td style="text-align: left;">[]string</td>
 <td style="text-align: left;">Surrounding source lines for orientation</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>test_files</code></td>
+<td style="text-align: left;"><code>mutants[].test_files</code></td>
 <td style="text-align: left;">[]string</td>
 <td style="text-align: left;">Test files in the same package</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>description</code></td>
+<td style="text-align: left;"><code>mutants[].description</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">Human-readable description of what the mutator changed</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>hint</code></td>
+<td style="text-align: left;"><code>mutants[].kill_hint</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">A concrete suggestion for a test that would kill this mutant</td>
 </tr>

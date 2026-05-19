@@ -712,12 +712,24 @@
 <td style="text-align: left;"><code>--coverage</code></td>
 </tr>
 <tr>
+<td style="text-align: left;">Per-test filtering — run only covering tests per mutation</td>
+<td style="text-align: left;"><code>--per-test</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Extra flags for every <code>go test</code> call</td>
+<td style="text-align: left;"><code>--test-flags</code></td>
+</tr>
+<tr>
 <td style="text-align: left;">Quiet mode — suppress killed/skip noise</td>
 <td style="text-align: left;"><code>--quiet</code></td>
 </tr>
 <tr>
 <td style="text-align: left;">Fine-grained output filter</td>
 <td style="text-align: left;"><code>--output-statuses</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Suppress diff output</td>
+<td style="text-align: left;"><code>--no-diffs</code></td>
 </tr>
 <tr>
 <td style="text-align: left;">Dry-run mode — count mutations without running tests</td>
@@ -738,6 +750,10 @@
 <tr>
 <td style="text-align: left;">Baseline file — only fail on <em>new</em> escapes</td>
 <td style="text-align: left;"><code>--baseline</code>, <code>--update-baseline</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Per-mutator allowlist / denylist in config</td>
+<td style="text-align: left;"><code>enable_mutators</code>, <code>disable_mutators</code></td>
 </tr>
 <tr>
 <td style="text-align: left;">Live progress display</td>
