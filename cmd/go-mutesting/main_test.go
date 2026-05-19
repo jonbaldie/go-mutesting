@@ -193,6 +193,41 @@ func TestMainPerTestFlag(t *testing.T) {
 	)
 }
 
+func TestMainDryRun(t *testing.T) {
+	// --dry-run must exit 0 and report how many mutations would be generated
+	// without writing any files or running any tests.
+	testMain(
+		t,
+		"../../example",
+		[]string{"--dry-run"},
+		returnOk,
+		"would be generated",
+	)
+}
+
+func TestMainNoDiffs(t *testing.T) {
+	// --no-diffs must complete normally without crashing; the summary line
+	// confirms the run finished.
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "1", "--no-diffs"},
+		returnOk,
+		"mutation score",
+	)
+}
+
+func TestMainOutputStatuses(t *testing.T) {
+	// --output-statuses filters terminal output but must not affect the summary.
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "1", "--output-statuses", "k"},
+		returnOk,
+		"mutation score",
+	)
+}
+
 func testMain(t *testing.T, root string, exec []string, expectedExitCode int, contains string) {
 	saveStderr := os.Stderr
 	saveStdout := os.Stdout
