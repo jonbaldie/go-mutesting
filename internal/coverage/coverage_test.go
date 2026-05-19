@@ -355,9 +355,10 @@ func TestCoveringTests_NilReceiver(t *testing.T) {
 }
 
 func TestCoveringTests_ZeroLine(t *testing.T) {
-	// Include a line-0 entry so that bypassing the guard would return a non-nil
-	// result instead of nil. Also assert that lineNum=1 works, which kills the
-	// numbers/incrementer mutation that widens the guard to lineNum <= 1.
+	// Line-0 entry ensures that removing the guard entirely would return
+	// non-nil for lineNum=0 instead of nil (map key 0 exists).
+	// lineNum=1 assertion kills the numbers/incrementer mutation that
+	// widens the guard from lineNum <= 0 to lineNum <= 1.
 	p := &PerTestProfile{data: map[string]map[int][]string{
 		"pkg/foo.go": {0: {"TestHidden"}, 1: {"TestVisible"}},
 	}}

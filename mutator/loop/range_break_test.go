@@ -3,8 +3,15 @@ package loop
 import (
 	"testing"
 
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	"github.com/jonbaldie/go-mutesting/v2/test"
 )
+
+func TestMutatorLoopRangeBreakRegistered(t *testing.T) {
+	if _, err := mutator.New("loop/range_break"); err != nil {
+		t.Fatalf("mutator not registered: %v", err)
+	}
+}
 
 func TestMutatorLoopRangeBreak(t *testing.T) {
 	test.Mutator(

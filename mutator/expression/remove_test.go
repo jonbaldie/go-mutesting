@@ -3,8 +3,15 @@ package expression
 import (
 	"testing"
 
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	"github.com/jonbaldie/go-mutesting/v2/test"
 )
+
+func TestMutatorRemoveTermRegistered(t *testing.T) {
+	if _, err := mutator.New("expression/remove"); err != nil {
+		t.Fatalf("mutator not registered: %v", err)
+	}
+}
 
 func TestMutatorRemoveTerm(t *testing.T) {
 	test.Mutator(

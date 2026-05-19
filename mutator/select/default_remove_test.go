@@ -3,8 +3,15 @@ package selectmutator
 import (
 	"testing"
 
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	"github.com/jonbaldie/go-mutesting/v2/test"
 )
+
+func TestMutatorSelectDefaultRemoveRegistered(t *testing.T) {
+	if _, err := mutator.New("select/default_remove"); err != nil {
+		t.Fatalf("mutator not registered: %v", err)
+	}
+}
 
 func TestMutatorSelectDefaultRemove(t *testing.T) {
 	test.Mutator(

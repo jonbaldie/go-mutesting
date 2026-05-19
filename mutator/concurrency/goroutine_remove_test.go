@@ -3,8 +3,15 @@ package concurrency
 import (
 	"testing"
 
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	"github.com/jonbaldie/go-mutesting/v2/test"
 )
+
+func TestMutatorGoroutineRemoveRegistered(t *testing.T) {
+	if _, err := mutator.New("concurrency/goroutine_remove"); err != nil {
+		t.Fatalf("mutator not registered: %v", err)
+	}
+}
 
 func TestMutatorGoroutineRemove(t *testing.T) {
 	test.Mutator(
