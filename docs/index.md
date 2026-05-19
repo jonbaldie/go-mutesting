@@ -18,21 +18,21 @@ The **Mutation Score Indicator (MSI)** is killed / total. 100% means every mutat
 
 | Feature | Flag |
 | :--- | :--- |
+| Quality gates — fail CI below a mutation score | `--min-msi`, `--min-covered-msi` |
+| Coverage-aware MSI — score covered lines separately | `--coverage` |
+| Baseline file — only fail on *new* escapes | `--baseline`, `--update-baseline` |
+| Git diff filter — only mutate changed lines in a PR | `--git-diff-lines` |
+| Per-test filtering — run only covering tests per mutant | `--per-test` |
 | Parallel execution (all CPUs by default) | `--workers N` |
-| Quality gates — fail CI below a score | `--min-msi`, `--min-covered-msi` |
-| Git diff filter — only mutate changed lines | `--git-diff-lines` |
-| Coverage-aware MSI | `--coverage` |
-| Per-test filtering — run only covering tests per mutation | `--per-test` |
-| Extra flags for every `go test` call | `--test-flags` |
-| Quiet mode — suppress killed/skip noise | `--quiet` |
-| Fine-grained output filter | `--output-statuses` |
-| Suppress diff output | `--no-diffs` |
-| Dry-run mode — count mutations without running tests | `--dry-run` |
+| LLM-ready escaped-mutant report | `--logger-agentic-json` |
 | GitHub Actions annotations | `--logger-github` |
 | Compact stats JSON for badges/dashboards | `--logger-summary-json` |
-| LLM-ready escaped-mutant report | `--logger-agentic-json` |
-| Baseline file — only fail on *new* escapes | `--baseline`, `--update-baseline` |
 | Per-mutator allowlist / denylist in config | `enable_mutators`, `disable_mutators` |
+| Extra flags for every `go test` call | `--test-flags` |
+| Fine-grained output filter | `--output-statuses` |
+| Quiet mode — suppress killed/skip noise | `--quiet` |
+| Suppress diff output | `--no-diffs` |
+| Dry-run mode — count mutations without running tests | `--dry-run` |
 | Live progress display | automatic on TTY |
 
 ## Quick install
