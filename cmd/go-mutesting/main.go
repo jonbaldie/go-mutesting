@@ -79,6 +79,16 @@ func statusVisible(opts *models.Options, letter byte) bool {
 	return true
 }
 
+// matchesMutator reports whether pattern matches the mutator name.
+// A trailing * is a prefix wildcard: "arithmetic/*" matches any name starting
+// with "arithmetic/". A bare "*" matches everything. Exact names match literally.
+func matchesMutator(pattern, name string) bool {
+	if strings.HasSuffix(pattern, "*") {
+		return strings.HasPrefix(name, strings.TrimSuffix(pattern, "*"))
+	}
+	return name == pattern
+}
+
 func checkArguments(args []string, opts *models.Options) (bool, int) {
 	p := flags.NewNamedParser("go-mutesting", flags.None)
 
@@ -230,8 +240,7 @@ MUTATOR:
 		if len(opts.Config.EnableMutators) > 0 {
 			allowed := false
 			for _, e := range opts.Config.EnableMutators {
-				pattern := strings.HasSuffix(e, "*")
-				if (pattern && strings.HasPrefix(name, e[:len(e)-2])) || (!pattern && name == e) {
+				if matchesMutator(e, name) {
 					allowed = true
 					break
 				}
@@ -243,8 +252,7 @@ MUTATOR:
 
 		// disable_mutators (config) and --disable (CLI) are both applied after the allowlist.
 		for _, d := range effectiveDisable {
-			pattern := strings.HasSuffix(d, "*")
-			if (pattern && strings.HasPrefix(name, d[:len(d)-2])) || (!pattern && name == d) {
+			if matchesMutator(d, name) {
 				continue MUTATOR
 			}
 		}
