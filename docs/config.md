@@ -21,6 +21,8 @@ silent_mode: false
 min_msi: 0
 min_covered_msi: 0
 exclude_dirs: []
+disable_mutators: []
+enable_mutators: []
 ```
 
 ## Fields
@@ -35,12 +37,44 @@ exclude_dirs: []
 | `min_msi` | float | `0` | Minimum overall MSI (0–100); `0` disables the gate |
 | `min_covered_msi` | float | `0` | Minimum covered-code MSI (0–100); `0` disables the gate |
 | `exclude_dirs` | []string | `[]` | Directory path prefixes to exclude from mutation |
+| `disable_mutators` | []string | `[]` | Mutator names to disable. Merged with `--disable` CLI flags (union). Supports trailing-`*` wildcard, e.g. `arithmetic/*`. Run `go-mutesting --list-mutators` for all names. |
+| `enable_mutators` | []string | `[]` | Allowlist: if non-empty, only matching mutators run. Supports trailing-`*` wildcard. `--disable` can still exclude entries from this list. |
 
 ## Notes
 
 - CLI flags override config file values.
 - Unknown keys in the config file cause an error (strict parsing).
 - `exclude_dirs` values are matched as path *prefixes*, not globs. For example, `vendor` excludes any path starting with `vendor`.
+
+## Mutator control
+
+`enable_mutators` is an allowlist: when set, only the listed mutators run. `disable_mutators` is then applied on top as a denylist, so you can narrow an allowlist further. CLI `--disable` is always merged with `disable_mutators`.
+
+Disable an entire category using a trailing `*`:
+
+```yaml
+disable_mutators:
+  - arithmetic/*
+  - numbers/float-negate
+```
+
+Run only a specific category:
+
+```yaml
+enable_mutators:
+  - branch/*
+```
+
+Combine — enable a category but suppress one noisy member:
+
+```yaml
+enable_mutators:
+  - expression/*
+disable_mutators:
+  - expression/context-nil
+```
+
+Run `go-mutesting --list-mutators` to see all available names.
 
 ## Example
 

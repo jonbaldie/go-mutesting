@@ -228,6 +228,30 @@ func TestMainOutputStatuses(t *testing.T) {
 	)
 }
 
+func TestMainConfigDisableMutators(t *testing.T) {
+	// disable_mutators in config silently drops the arithmetic category;
+	// the run still completes and reports a mutation score.
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "1", "--config", "../testdata/configs/configDisableMutators.yml.test"},
+		returnOk,
+		"mutation score",
+	)
+}
+
+func TestMainConfigEnableMutators(t *testing.T) {
+	// enable_mutators allowlist restricts to branch/if only;
+	// the run still completes and reports a mutation score.
+	testMain(
+		t,
+		"../../example",
+		[]string{"--exec-timeout", "1", "--config", "../testdata/configs/configEnableMutators.yml.test"},
+		returnOk,
+		"mutation score",
+	)
+}
+
 func testMain(t *testing.T, root string, exec []string, expectedExitCode int, contains string) {
 	saveStderr := os.Stderr
 	saveStdout := os.Stdout

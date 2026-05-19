@@ -52,6 +52,22 @@
       },
       "default": [],
       "description": "Directory path prefixes to exclude from mutation. Matched as prefixes, not globs (e.g. 'vendor' excludes any path starting with 'vendor')."
+    },
+    "disable_mutators": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Mutator names to disable. Merged with --disable CLI flags (union; both are denylists). Supports trailing-* wildcard to disable a whole category (e.g. 'arithmetic/*'). Run go-mutesting --list-mutators for all available names."
+    },
+    "enable_mutators": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Allowlist: if non-empty, only mutators matching these names run. Supports trailing-* wildcard (e.g. 'branch/*'). The CLI --disable flag can still exclude entries from this list."
     }
   }
 }
