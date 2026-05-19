@@ -303,7 +303,15 @@ func TestBuildPerTestProfile_RealPackage(t *testing.T) {
 		tmp, 30, 1, nil,
 	)
 	require.NoError(t, err)
-	assert.NotNil(t, prof, "arithmetic package should produce a per-test profile")
+	require.NotNil(t, prof, "arithmetic package should produce a per-test profile")
+	var found bool
+	for l := 1; l <= 100; l++ {
+		if len(prof.CoveringTests("/abs/mutator/arithmetic/assignment.go", l)) > 0 {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "profile should contain coverage data for arithmetic/assignment.go")
 }
 
 func TestBuildPerTestProfile_EmptyPackage(t *testing.T) {
@@ -318,6 +326,27 @@ func TestBuildPerTestProfile_EmptyPackage(t *testing.T) {
 	assert.Nil(t, prof)
 }
 
+func TestBuildPerTestProfile_WorkersZero(t *testing.T) {
+	// workers=0 must be normalised to 1; verify the profile is returned without
+	// deadlocking and contains actual coverage data. Uses gitdiff (small test suite).
+	tmp := t.TempDir()
+	prof, err := BuildPerTestProfile(
+		"github.com/jonbaldie/go-mutesting/v2/internal/gitdiff",
+		"github.com/jonbaldie/go-mutesting/v2",
+		tmp, 30, 0, nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, prof)
+	var found bool
+	for l := 1; l <= 100; l++ {
+		if len(prof.CoveringTests("/abs/internal/gitdiff/gitdiff.go", l)) > 0 {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "profile should contain coverage data for gitdiff.go")
+}
+
 // --- PerTestProfile tests ---
 
 func TestCoveringTests_NilReceiver(t *testing.T) {
@@ -326,15 +355,19 @@ func TestCoveringTests_NilReceiver(t *testing.T) {
 }
 
 func TestCoveringTests_ZeroLine(t *testing.T) {
+	// Include a line-0 entry so that bypassing the guard would return a non-nil
+	// result instead of nil. Also assert that lineNum=1 works, which kills the
+	// numbers/incrementer mutation that widens the guard to lineNum <= 1.
 	p := &PerTestProfile{data: map[string]map[int][]string{
-		"pkg/foo.go": {1: {"TestFoo"}},
+		"pkg/foo.go": {0: {"TestHidden"}, 1: {"TestVisible"}},
 	}}
 	assert.Nil(t, p.CoveringTests("/abs/pkg/foo.go", 0))
+	assert.Equal(t, []string{"TestVisible"}, p.CoveringTests("/abs/pkg/foo.go", 1))
 }
 
 func TestCoveringTests_NegativeLine(t *testing.T) {
 	p := &PerTestProfile{data: map[string]map[int][]string{
-		"pkg/foo.go": {1: {"TestFoo"}},
+		"pkg/foo.go": {0: {"TestHidden"}, 1: {"TestFoo"}},
 	}}
 	assert.Nil(t, p.CoveringTests("/abs/pkg/foo.go", -1))
 }

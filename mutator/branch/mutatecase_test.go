@@ -3,6 +3,7 @@ package branch
 import (
 	"testing"
 
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	"github.com/jonbaldie/go-mutesting/v2/test"
 )
 
@@ -13,4 +14,10 @@ func TestMutatorCase(t *testing.T) {
 		"../../testdata/branch/mutatecase.go",
 		3,
 	)
+}
+
+func TestMutatorCaseRegistered(t *testing.T) {
+	if _, err := mutator.New("branch/case"); err != nil {
+		t.Fatalf("mutator not registered: %v", err)
+	}
 }

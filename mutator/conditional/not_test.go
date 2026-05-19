@@ -3,6 +3,7 @@ package conditional
 import (
 	"testing"
 
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	"github.com/jonbaldie/go-mutesting/v2/test"
 )
 
@@ -22,4 +23,10 @@ func TestMutatorConditionalNotForStmt(t *testing.T) {
 		"../../testdata/conditional/not_for.go",
 		1,
 	)
+}
+
+func TestMutatorConditionalNotRegistered(t *testing.T) {
+	if _, err := mutator.New("conditional/not"); err != nil {
+		t.Fatalf("mutator not registered: %v", err)
+	}
 }
