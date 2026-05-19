@@ -86,6 +86,6 @@ Integration tests live in `cmd/go-mutesting/main_test.go`. They invoke `mainCmd`
 - Each escaped mutant's `ProcessOutput` contains `"FAIL"`; each killed one contains `"PASS"`.
 - MSI is in `[0.0, 1.0]`.
 
-**For quality gate tests that must fail**, use a threshold that is permanently out of reach (e.g. `--min-msi 101`) rather than relying on the example package having escaped mutants. The example suite now kills 100% of mutants.
+**For quality gate tests that must fail**, use a threshold that is permanently out of reach (e.g. `--min-msi 101`) rather than relying on the example package having escaped mutants.
 
 **After running `go test ./cmd/go-mutesting/`**, always run `git restore example/example.go`. The integration tests invoke the mutation binary against the example package and the file is sometimes left with mutations applied.

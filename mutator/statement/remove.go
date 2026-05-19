@@ -23,7 +23,20 @@ func checkRemoveStatement(node ast.Stmt) bool {
 	switch n := node.(type) {
 	case *ast.AssignStmt:
 		if n.Tok != token.DEFINE {
-			return true
+			// Skip assignments whose entire LHS is already blank identifiers
+			// (e.g. _, _, _ = a, b, c). The noop replacement would be identical,
+			// producing a diff-less mutation that always escapes.
+			allBlank := true
+			for _, lhs := range n.Lhs {
+				id, ok := lhs.(*ast.Ident)
+				if !ok || id.Name != "_" {
+					allBlank = false
+					break
+				}
+			}
+			if !allBlank {
+				return true
+			}
 		}
 	case *ast.ExprStmt, *ast.IncDecStmt:
 		return true

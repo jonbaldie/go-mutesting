@@ -27,4 +27,7 @@ _testmain.go
 /go-mutesting
 report.json
 report.html
+go-mutesting-report.html
+go-mutesting-summary.json
+go-mutesting-agentic.json
 *.go.new
