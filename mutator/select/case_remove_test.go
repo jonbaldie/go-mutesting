@@ -3,8 +3,15 @@ package selectmutator
 import (
 	"testing"
 
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	"github.com/jonbaldie/go-mutesting/v2/test"
 )
+
+func TestMutatorSelectCaseRemoveRegistered(t *testing.T) {
+	if _, err := mutator.New("select/case_remove"); err != nil {
+		t.Fatalf("mutator not registered: %v", err)
+	}
+}
 
 func TestMutatorSelectCaseRemove(t *testing.T) {
 	test.Mutator(

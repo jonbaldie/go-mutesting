@@ -3,6 +3,7 @@ package numbers
 import (
 	"testing"
 
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	"github.com/jonbaldie/go-mutesting/v2/test"
 )
 
@@ -13,4 +14,10 @@ func TestMutatorNumbersIncrementer(t *testing.T) {
 		"../../testdata/numbers/incrementer.go",
 		3,
 	)
+}
+
+func TestMutatorNumbersIncrementerRegistered(t *testing.T) {
+	if _, err := mutator.New("numbers/incrementer"); err != nil {
+		t.Fatalf("mutator not registered: %v", err)
+	}
 }

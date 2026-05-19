@@ -3,6 +3,7 @@ package statement
 import (
 	"testing"
 
+	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	"github.com/jonbaldie/go-mutesting/v2/test"
 )
 
@@ -22,4 +23,10 @@ func TestMutatorDeferRemoveSelect(t *testing.T) {
 		"../../testdata/statement/defer_remove_select.go",
 		1,
 	)
+}
+
+func TestMutatorDeferRemoveRegistered(t *testing.T) {
+	if _, err := mutator.New("statement/defer-remove"); err != nil {
+		t.Fatalf("mutator not registered: %v", err)
+	}
 }

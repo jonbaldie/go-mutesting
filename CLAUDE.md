@@ -73,6 +73,7 @@ Follow these steps in order when landing a change:
 - Quality gates exit with code 4 (not 1) so CI can distinguish "escaped mutants" from "tool error".
 - `--min-msi` / `--min-covered-msi` CLI flags default to `-1` (sentinel for "use config or skip gate"); config zero value means no gate.
 - `HasCoverage bool` on `Report` distinguishes "coverage ran, nothing uncovered" from "coverage never ran".
+- **Edit files one at a time using Read then Edit.** Do not use scripts or string-replacement tools to make the same change across many files at once. Small differences between files (naming conventions, existing imports, extra test functions) mean a bulk approach produces inconsistent output that must be cleaned up manually.
 
 ## Testing posture
 
