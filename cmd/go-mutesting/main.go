@@ -534,9 +534,7 @@ MUTATOR:
 	}
 
 	if !opts.Exec.NoExec {
-		if !opts.Config.SilentMode {
-			printSummary(report)
-		}
+		printSummary(report)
 		if opts.Logger.GitHub {
 			printGitHubAnnotations(report)
 		}
