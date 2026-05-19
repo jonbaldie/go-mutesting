@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
-## [Unreleased]
+## [v2.6.8] — 2026-05-19
 
 ### Added
 - Registration assertions added to all mutator test files; every mutator's `init()` registration is now directly tested.
@@ -14,6 +14,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 - `statement/return` tests extended: pointer/slice, imported struct, already-zero, and `unsafe.Pointer` return types now covered by golden-file tests.
 - `internal/coverage` tests strengthened: zero-line and negative-line guard, workers-normalisation (`workers=0→1`), and data-presence assertions for `BuildPerTestProfile`. All target files now above 80% covered MSI.
 - CLAUDE.md convention: edit files one at a time using Read then Edit; no bulk scripts.
+
+[v2.6.8]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.8
 
 ---
 
