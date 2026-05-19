@@ -219,17 +219,33 @@ func mainCmd(args []string) int {
 		}
 	}
 
+	// Merge CLI --disable flags with config disable_mutators (union; both are denylists).
+	effectiveDisable := append(opts.Mutator.DisableMutators, opts.Config.DisableMutators...)
+
 	var mutators []mutatorItem
 
 MUTATOR:
 	for _, name := range mutator.List() {
-		if len(opts.Mutator.DisableMutators) > 0 {
-			for _, d := range opts.Mutator.DisableMutators {
-				pattern := strings.HasSuffix(d, "*")
-
-				if (pattern && strings.HasPrefix(name, d[:len(d)-2])) || (!pattern && name == d) {
-					continue MUTATOR
+		// enable_mutators acts as an allowlist: if set, only matching mutators run.
+		if len(opts.Config.EnableMutators) > 0 {
+			allowed := false
+			for _, e := range opts.Config.EnableMutators {
+				pattern := strings.HasSuffix(e, "*")
+				if (pattern && strings.HasPrefix(name, e[:len(e)-2])) || (!pattern && name == e) {
+					allowed = true
+					break
 				}
+			}
+			if !allowed {
+				continue MUTATOR
+			}
+		}
+
+		// disable_mutators (config) and --disable (CLI) are both applied after the allowlist.
+		for _, d := range effectiveDisable {
+			pattern := strings.HasSuffix(d, "*")
+			if (pattern && strings.HasPrefix(name, d[:len(d)-2])) || (!pattern && name == d) {
+				continue MUTATOR
 			}
 		}
 

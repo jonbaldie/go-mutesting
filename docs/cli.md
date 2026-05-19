@@ -55,7 +55,7 @@ Targets can be Go source files, directories, or import paths. The `...` wildcard
 | Flag | Description |
 | :--- | :---------- |
 | `--blacklist <file>` | File of MD5 checksums to skip |
-| `--disable <mutator>` | Disable a mutator by name (repeatable) |
+| `--disable <mutator>` | Disable a mutator by name (repeatable). Supports trailing-`*` wildcard (e.g. `arithmetic/*`). Config file equivalents: `disable_mutators` (denylist) and `enable_mutators` (allowlist) — see [config reference](config.md). |
 | `--git-diff-lines` | Only mutate lines changed since `--git-diff-base` |
 | `--git-diff-base` | Git ref to diff against (default: `HEAD`) |
 

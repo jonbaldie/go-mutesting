@@ -23,6 +23,8 @@ The **Mutation Score Indicator (MSI)** is killed / total. 100% means every mutat
 | Git diff filter — only mutate changed lines | `--git-diff-lines` |
 | Coverage-aware MSI | `--coverage` |
 | Quiet mode — suppress killed/skip noise | `--quiet` |
+| Fine-grained output filter | `--output-statuses` |
+| Dry-run mode — count mutations without running tests | `--dry-run` |
 | GitHub Actions annotations | `--logger-github` |
 | Compact stats JSON for badges/dashboards | `--logger-summary-json` |
 | LLM-ready escaped-mutant report | `--logger-agentic-json` |

@@ -88,5 +88,7 @@ type Options struct {
 		ExcludeDirs          []string `yaml:"exclude_dirs"`
 		MinMsi               float64  `yaml:"min_msi"`
 		MinCoveredMsi        float64  `yaml:"min_covered_msi"`
+		DisableMutators      []string `yaml:"disable_mutators"`
+		EnableMutators       []string `yaml:"enable_mutators"`
 	}
 }
