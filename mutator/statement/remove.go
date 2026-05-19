@@ -29,9 +29,14 @@ func checkRemoveStatement(node ast.Stmt) bool {
 			allBlank := true
 			for _, lhs := range n.Lhs {
 				id, ok := lhs.(*ast.Ident)
-				if !ok || id.Name != "_" {
+				if !ok {
 					allBlank = false
 					break
+				}
+				switch id.Name {
+				case "_":
+				default:
+					allBlank = false
 				}
 			}
 			if !allBlank {

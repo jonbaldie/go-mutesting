@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
+	"math"
 	"go/format"
 	"go/printer"
 	"go/token"
@@ -164,6 +165,8 @@ type execJob struct {
 	execs           []string
 	perTestProf     *coverage.PerTestProfile
 	extraTestFlags  []string
+	runMutantID     string // when set, skip all mutants whose computed ID != this value
+	moduleRoot      string // used to compute relative file path for ID matching
 }
 
 func mainCmd(args []string) int {
@@ -333,6 +336,38 @@ MUTATOR:
 		}
 	}
 
+	// Adaptive timeout: when --timeout-coefficient > 0, measure baseline test-suite
+	// run time per package and set exec timeout = ceil(coefficient × max_baseline).
+	if opts.Exec.TimeoutCoefficient > 0 && !opts.Exec.NoExec && len(execs) == 0 {
+		var maxBaseline time.Duration
+		for _, importPkg := range pkgs {
+			pkgPath := packageImportPath(importPkg.Files)
+			if pkgPath == "" {
+				continue
+			}
+			baseArgs := []string{"test", "-timeout", "300s"}
+			baseArgs = append(baseArgs, extraTestFlags...)
+			baseArgs = append(baseArgs, pkgPath)
+			cmd := exec.Command("go", baseArgs...)
+			cmd.Env = os.Environ()
+			start := time.Now()
+			_ = cmd.Run()
+			elapsed := time.Since(start)
+			if elapsed > maxBaseline {
+				maxBaseline = elapsed
+			}
+		}
+		if maxBaseline > 0 {
+			derived := uint(math.Ceil(opts.Exec.TimeoutCoefficient * maxBaseline.Seconds()))
+			if derived < 1 {
+				derived = 1
+			}
+			opts.Exec.Timeout = derived
+			console.Verbose(opts, "Adaptive timeout: baseline %.2fs × %.1f = %ds",
+				maxBaseline.Seconds(), opts.Exec.TimeoutCoefficient, derived)
+		}
+	}
+
 	// coverProfileForPkg runs go test -coverprofile for pkg and returns the profile.
 	// Returns nil when coverage is disabled or unavailable (soft failure).
 	coverProfileForPkg := func(pkgFiles []string) *coverage.Profile {
@@ -456,15 +491,18 @@ MUTATOR:
 
 			annotationProcessor := annotation.NewProcessor()
 			skipFilterProcessor := filter.NewSkipMakeArgsFilter()
+			sourceLineFilter := filter.NewSourceLineRegexFilter(opts.Config.IgnoreSourceLines)
 
 			collectors := []filter.NodeCollector{
 				annotationProcessor,
 				skipFilterProcessor,
+				sourceLineFilter,
 			}
 
 			nodeFilters := []filter.NodeFilter{
 				annotationProcessor,
 				skipFilterProcessor,
+				sourceLineFilter,
 			}
 
 			src, fset, pkg, info, err := parser.ParseAndTypeCheckFile(file, collectors)
@@ -498,11 +536,11 @@ MUTATOR:
 
 				for _, f := range astutil.Functions(src) {
 					if m.MatchString(f.Name.Name) {
-						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags, dryRunMutatorTotals)
+						mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, f, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags, dryRunMutatorTotals, opts.Exec.RunMutantID, moduleRoot)
 					}
 				}
 			} else {
-				mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags, dryRunMutatorTotals)
+				mutationID = mutate(opts, mutators, mutationBlackList, mutationID, pkg, info, file, fset, src, src, tmpFile, execs, report, &reportMu, nodeFilters, absFile, coverProfile, gitChangedLines, jobs, perTestProf, extraTestFlags, dryRunMutatorTotals, opts.Exec.RunMutantID, moduleRoot)
 			}
 			dryRunTotal += mutationID
 		}
@@ -585,6 +623,13 @@ MUTATOR:
 			return exitError(err.Error())
 		}
 		console.Verbose(opts, "Save agentic report into %q", models.ReportAgenticJSONFileName)
+	}
+
+	if opts.Logger.GitLab {
+		if err = reportmaker.MakeGitLabReport(*report, moduleRoot); err != nil {
+			return exitError(err.Error())
+		}
+		console.Verbose(opts, "Save GitLab report into %q", models.ReportGitLabJSONFileName)
 	}
 
 	if opts.Config.HTMLOutput || opts.General.HTMLOutput {
@@ -737,6 +782,8 @@ func mutate(
 	perTestProf *coverage.PerTestProfile,
 	extraTestFlags []string,
 	dryRunGlobalTotals map[string]int,
+	runMutantID string,
+	moduleRoot string,
 ) int {
 	// Read the original source once per file — it never changes during mutation.
 	originalSourceCode, err := os.ReadFile(originalFile)
@@ -811,6 +858,8 @@ func mutate(
 						execs:           execs,
 						perTestProf:     perTestProf,
 						extraTestFlags:  extraTestFlags,
+						runMutantID:     runMutantID,
+						moduleRoot:      moduleRoot,
 					}
 				}
 			}
@@ -857,6 +906,22 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex) {
 		lineNum := int(parser.FindOriginalStartLine(diffOut))
 		if !gitdiff.IsLineChanged(job.gitChangedLines, job.absFile, lineNum) {
 			console.Debug(opts, "Skip %q at line %d (not in git diff)", job.mutationFile, lineNum)
+			return
+		}
+	}
+
+	// Single-mutant filter: when --run-mutant-id is set, skip every mutant
+	// whose computed ID doesn't match the target.
+	if job.runMutantID != "" {
+		diffOut, _ := exec.Command("diff", "--label=Original", "--label=New", "-u", job.originalFile, job.mutationFile).CombinedOutput()
+		relFile := job.absFile
+		if job.moduleRoot != "" {
+			if rel, err := filepath.Rel(job.moduleRoot, job.absFile); err == nil {
+				relFile = filepath.ToSlash(rel)
+			}
+		}
+		id := baseline.MutantID(relFile, mutant.Mutator.MutatorName, string(diffOut))
+		if id != job.runMutantID {
 			return
 		}
 	}

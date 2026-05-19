@@ -6,6 +6,99 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [Unreleased]
+
+### Added
+- `conditional/bool-literal` mutator: swaps `true`↔`false` in assignments and function call arguments.
+- `conditional/not` mutator: removes the `!` operator from negated conditions in `if`, `for`, and `&&`/`||` operands.
+- `expression/string-literal` mutator: replaces non-empty string literals in `==`/`!=` comparisons with `""`.
+- `statement/defer-remove` mutator: turns `defer f()` into an immediate call, testing whether deferred execution timing matters. Covers `defer` inside `select` case branches.
+- `arithmetic/assign_invert` expanded to cover bitwise compound assignments (`&=`, `|=`, `^=`, `<<=`, `>>=`, `&^=`).
+- `--logger-gitlab` flag: emits a GitLab Code Quality artifact JSON (`go-mutesting-gitlab.json`).
+- `--timeout-coefficient` flag: scales per-mutation timeout by a multiplier of the baseline test-suite run time.
+- `--run-mutant-id` flag: runs only the mutant with a given stable ID (copy the `id` field from `go-mutesting-agentic.json`).
+- `ignore_source_lines` config key: list of regexes; mutations on matching source lines are suppressed.
+- `SourceLineRegexFilter` in `internal/filter`: programmatic filter for skipping mutations on regex-matched lines.
+- New tests for `internal/coverage` (`CountTests`, `BuildPerTestProfile`) and `internal/filter` (`SourceLineRegexFilter`, `ShouldSkip`), raising quality-gate MSI to 77.75% / 83.78% covered.
+
+### Fixed
+- `statement/return` mutator now zeroes struct-typed return values using an empty composite literal (`T{}`).
+- Guard conditions in `expression/context-nil`, `expression/string-literal`, and `statement/remove` refactored from `==` string comparisons to `switch`, eliminating equivalent mutations.
+- GitLab report fingerprint now uses the stable `baseline.MutantID` hash, preventing deduplication of distinct mutations on the same line.
+
+---
+
+## [v2.6.6] — 2026-05-19
+
+### Added
+- `--dry-run` now prints per-mutator counts as a summary table before the grand total.
+- `--per-test` startup message: prints the package name and test count before building the per-test coverage map.
+- Agentic JSON `context_start_line` field: anchors `context_lines[0]` to a 1-based source line so LLMs can navigate without guessing.
+
+### Fixed
+- `--git-diff-base` now auto-detects the default branch via `git symbolic-ref origin/HEAD`; falls back to `master`.
+- Agentic JSON `description` for simple one-line mutations now shows the exact change (e.g. `` `return a, b` → `return a, nil` ``).
+- `--quiet` help text now mentions `--no-diffs`.
+
+[v2.6.6]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.6
+
+---
+
+## [v2.6.5] — 2026-05-19
+
+### Fixed
+- `silent_mode: true` now prints only the final summary line; previously it suppressed the summary as well.
+- `--logger-agentic-json` descriptions and kill hints were missing for 14 mutators; all 27 current mutators are now covered.
+- `statement/remove` no longer generates false escapes on blank-assign statements (`_, _ = a, b`).
+- `.gitignore` extended to cover `go-mutesting-report.html`, `go-mutesting-summary.json`, and `go-mutesting-agentic.json`.
+
+[v2.6.5]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.5
+
+---
+
+## [v2.6.4] — 2026-05-19
+
+### Added
+- `disable_mutators` and `enable_mutators` config keys: commit per-mutator control to YAML instead of threading flags through every CLI call. Trailing-`*` wildcards work for whole categories (`arithmetic/*`).
+- Config JSON Schema updated for editor autocomplete.
+
+### Fixed
+- Panic when `*` was passed as a bare wildcard pattern to `--disable`.
+
+[v2.6.4]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.4
+
+---
+
+## [v2.6.3] — 2026-05-19
+
+### Added
+- `--dry-run` flag: count mutations without writing files or running tests.
+- `--no-diffs` flag: suppress diff output for all results (good for CI pipelines that consume the JSON report).
+- `--output-statuses` flag: filter terminal output to specific result types (e.g. `e` for escaped, `ke` for killed + escaped).
+- Config JSON Schema at `schema/config-schema.json`; add a comment to your config file for editor validation and autocomplete.
+
+### Fixed
+- Diffs for escaped and errored mutants now respect `--output-statuses`; previously they leaked through when other statuses were suppressed.
+
+[v2.6.3]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.3
+
+---
+
+## [v2.6.2] — 2026-05-18
+
+### Added
+- `--per-test` flag: builds a per-test coverage map and runs only the tests that cover each mutation.
+- `--test-flags` flag: passes extra flags to every `go test` call (e.g. `--test-flags=-short`).
+
+### Fixed
+- `--per-test` worker used `return` instead of `continue` on parse errors, causing a deadlock with one worker when any test binary failed to compile.
+- `--test-flags` values were not forwarded to the per-test profile-building phase, causing inconsistent behaviour.
+- `--per-test` help text incorrectly stated it requires `--coverage`.
+
+[v2.6.2]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.2
+
+---
+
 ## [v2.6.1] — 2026-05-18
 
 ### Added
@@ -17,6 +110,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 - Public mutator extension API: `mutator.Register` / `mutator.New` so third-party packages can add custom operators without forking.
 - MkDocs documentation site (Install, Quick Start, CLI reference, per-mutator pages, CI integration guide, JSON output schemas). Deployed to GitHub Pages.
 - This CHANGELOG.
+
+[v2.6.1]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.1
 
 ---
 
@@ -114,4 +209,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.0...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.6...HEAD

@@ -24,8 +24,11 @@ func MutatorContextNil(_ *types.Package, info *types.Info, node ast.Node) []muta
 		if !isContextType(info, arg) {
 			continue
 		}
-		if ident, ok := arg.(*ast.Ident); ok && ident.Name == "nil" {
-			continue
+		if ident, ok := arg.(*ast.Ident); ok {
+			switch ident.Name {
+			case "nil":
+				continue
+			}
 		}
 
 		idx := i

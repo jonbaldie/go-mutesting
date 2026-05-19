@@ -13,11 +13,17 @@ func init() {
 }
 
 var assignInvertMutations = map[token.Token]token.Token{
-	token.ADD_ASSIGN: token.SUB_ASSIGN,
-	token.SUB_ASSIGN: token.ADD_ASSIGN,
-	token.MUL_ASSIGN: token.QUO_ASSIGN,
-	token.QUO_ASSIGN: token.MUL_ASSIGN,
-	token.REM_ASSIGN: token.MUL_ASSIGN,
+	token.ADD_ASSIGN:     token.SUB_ASSIGN,
+	token.SUB_ASSIGN:     token.ADD_ASSIGN,
+	token.MUL_ASSIGN:     token.QUO_ASSIGN,
+	token.QUO_ASSIGN:     token.MUL_ASSIGN,
+	token.REM_ASSIGN:     token.MUL_ASSIGN,
+	token.AND_ASSIGN:     token.OR_ASSIGN,
+	token.OR_ASSIGN:      token.AND_ASSIGN,
+	token.XOR_ASSIGN:     token.AND_ASSIGN,
+	token.SHL_ASSIGN:     token.SHR_ASSIGN,
+	token.SHR_ASSIGN:     token.SHL_ASSIGN,
+	token.AND_NOT_ASSIGN: token.AND_ASSIGN,
 }
 
 // MutatorArithmeticAssignInvert implements a mutator to invert change assign statements.

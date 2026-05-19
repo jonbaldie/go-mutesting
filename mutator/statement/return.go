@@ -13,8 +13,8 @@ func init() {
 }
 
 // MutatorReturnValue replaces each non-zero return value with the zero value
-// for its type (false, 0, "", nil).
-func MutatorReturnValue(_ *types.Package, info *types.Info, node ast.Node) []mutator.Mutation {
+// for its type (false, 0, "", nil, TypeName{}).
+func MutatorReturnValue(pkg *types.Package, info *types.Info, node ast.Node) []mutator.Mutation {
 	n, ok := node.(*ast.ReturnStmt)
 	if !ok || len(n.Results) == 0 || info == nil {
 		return nil
@@ -28,7 +28,7 @@ func MutatorReturnValue(_ *types.Package, info *types.Info, node ast.Node) []mut
 			continue
 		}
 
-		zero := zeroExprForType(t.Underlying())
+		zero := zeroExprForType(t, pkg)
 		if zero == nil {
 			continue
 		}
@@ -49,8 +49,10 @@ func MutatorReturnValue(_ *types.Package, info *types.Info, node ast.Node) []mut
 	return mutations
 }
 
-// zeroExprForType returns the zero-value AST expression for the underlying type.
-func zeroExprForType(t types.Type) ast.Expr {
+// zeroExprForType returns the zero-value AST expression for t as seen from
+// currentPkg. Named struct types produce TypeName{} (or pkg.TypeName{} for
+// imported types). All other types follow the same rules as before.
+func zeroExprForType(t types.Type, currentPkg *types.Package) ast.Expr {
 	switch u := t.(type) {
 	case *types.Basic:
 		switch {
@@ -66,7 +68,28 @@ func zeroExprForType(t types.Type) ast.Expr {
 	case *types.Pointer, *types.Slice, *types.Map, *types.Chan, *types.Interface, *types.Signature:
 		return ast.NewIdent("nil")
 	case *types.Named:
-		return zeroExprForType(u.Underlying())
+		// For named struct types, generate TypeName{} or pkg.TypeName{}.
+		// Skip generic types (TypeParams present) — the instantiation syntax
+		// is complex and rarely worth mutating.
+		if u.TypeParams() != nil {
+			return nil
+		}
+		if _, ok := u.Underlying().(*types.Struct); ok {
+			obj := u.Obj()
+			var typeExpr ast.Expr
+			if currentPkg != nil && obj.Pkg() != nil && obj.Pkg().Path() == currentPkg.Path() {
+				typeExpr = ast.NewIdent(obj.Name())
+			} else if obj.Pkg() != nil {
+				typeExpr = &ast.SelectorExpr{
+					X:   ast.NewIdent(obj.Pkg().Name()),
+					Sel: ast.NewIdent(obj.Name()),
+				}
+			} else {
+				typeExpr = ast.NewIdent(obj.Name())
+			}
+			return &ast.CompositeLit{Type: typeExpr}
+		}
+		return zeroExprForType(u.Underlying(), currentPkg)
 	}
 	return nil
 }
@@ -76,14 +99,26 @@ func zeroExprForType(t types.Type) ast.Expr {
 func isAlreadyZero(expr ast.Expr) bool {
 	switch n := expr.(type) {
 	case *ast.Ident:
-		return n.Name == "nil" || n.Name == "false"
+		switch n.Name {
+		case "nil", "false":
+			return true
+		}
 	case *ast.BasicLit:
 		switch n.Kind {
 		case token.INT, token.FLOAT:
-			return n.Value == "0" || n.Value == "0.0"
+			switch n.Value {
+			case "0", "0.0":
+				return true
+			}
 		case token.STRING:
-			return n.Value == `""`
+			switch n.Value {
+			case `""`:
+				return true
+			}
 		}
+	case *ast.CompositeLit:
+		// Already a zero-value struct literal if it has no field initializers.
+		return len(n.Elts) == 0
 	}
 	return false
 }

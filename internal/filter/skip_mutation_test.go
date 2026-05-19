@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSkipMutationForInitSlicesAndMaps(t *testing.T) {
@@ -155,4 +156,25 @@ func TestSkipMutationForInitSlicesAndMaps(t *testing.T) {
 			assert.ElementsMatch(t, tt.expectedOperators, foundOperators, "Operators mismatch")
 		})
 	}
+}
+
+func TestSkipMakeArgsFilter_ShouldSkip(t *testing.T) {
+	fset := token.NewFileSet()
+	src := `package main; var a = make([]int, 10)`
+	node, err := parser.ParseFile(fset, "test.go", src, parser.Mode(0))
+	require.NoError(t, err)
+
+	s := NewSkipMakeArgsFilter()
+	s.Collect(node, fset, "")
+
+	// The int literal "10" should be in IgnoredNodes → ShouldSkip returns true.
+	ast.Inspect(node, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.INT {
+			assert.True(t, s.ShouldSkip(lit, "any"), "int literal in make() should be skipped")
+		}
+		return true
+	})
+
+	// The file node itself is not in IgnoredNodes → ShouldSkip returns false.
+	assert.False(t, s.ShouldSkip(node, "any"), "file node should not be skipped")
 }
