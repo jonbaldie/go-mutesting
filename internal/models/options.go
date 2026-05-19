@@ -36,7 +36,7 @@ type Options struct {
 		Exec        string `long:"exec" description:"Execute this command for every mutation (by default the built-in exec command is used)"`
 		NoExec      bool   `long:"no-exec" description:"Skip the built-in exec command and just generate the mutations"`
 		Timeout     uint   `long:"exec-timeout" description:"Sets a timeout for the command execution (in seconds)" default:"10"`
-		RunMutantID string `long:"run-mutant-id" description:"Re-run only the mutant with this agentic-JSON ID (load go-mutesting-agentic.json and replay just that one mutation)"`
+		RunMutantID string `long:"run-mutant-id" description:"Run only the mutant with this stable ID. Copy the id field from go-mutesting-agentic.json to target a specific survivor."`
 		Coverage          bool    `long:"coverage" description:"Run go test -coverprofile before mutating to compute covered-code MSI and mark uncovered mutants"`
 		PerTest           bool    `long:"per-test" description:"Build a per-test coverage map and run only covering tests for each mutation. Fastest on packages with slow tests; pairs well with --coverage."`
 		TestFlags         string  `long:"test-flags" description:"Extra flags passed to each 'go test' invocation. Use the = form to pass flag values: --test-flags='-short'. Ignored when --exec is set."`

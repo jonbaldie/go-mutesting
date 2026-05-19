@@ -9,18 +9,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 ## [Unreleased]
 
 ### Added
-- `--logger-gitlab` flag: emits a GitLab-compatible CI artifact JSON file.
-- `--timeout-coefficient` flag: scales the per-test timeout by a multiplier (adaptive timeout for slow packages).
-- `--run-mutant-id` flag: re-runs a single named mutant by its stable ID, useful for debugging survivors without a full scan.
+- `conditional/bool-literal` mutator: swaps `true`↔`false` in assignments and function call arguments.
+- `conditional/not` mutator: removes the `!` operator from negated conditions in `if`, `for`, and `&&`/`||` operands.
+- `expression/string-literal` mutator: replaces non-empty string literals in `==`/`!=` comparisons with `""`.
+- `statement/defer-remove` mutator: turns `defer f()` into an immediate call, testing whether deferred execution timing matters. Covers `defer` inside `select` case branches.
+- `arithmetic/assign_invert` expanded to cover bitwise compound assignments (`&=`, `|=`, `^=`, `<<=`, `>>=`, `&^=`).
+- `--logger-gitlab` flag: emits a GitLab Code Quality artifact JSON (`go-mutesting-gitlab.json`).
+- `--timeout-coefficient` flag: scales per-mutation timeout by a multiplier of the baseline test-suite run time.
+- `--run-mutant-id` flag: runs only the mutant with a given stable ID (copy the `id` field from `go-mutesting-agentic.json`).
 - `ignore_source_lines` config key: list of regexes; mutations on matching source lines are suppressed.
-- `statement/defer-remove` now covers `defer` inside `select` case branches.
-- `conditional/not` now covers conditions inside `for` loop statements.
-- `SourceLineRegexFilter` in `internal/filter`: skips mutations on lines that match user-supplied regexes.
-- New tests for `internal/coverage` (`CountTests`, `BuildPerTestProfile`) and `internal/filter` (`SourceLineRegexFilter`, `ShouldSkip`), raising coverage MSI to 77.75% / 83.78% covered.
+- `SourceLineRegexFilter` in `internal/filter`: programmatic filter for skipping mutations on regex-matched lines.
+- New tests for `internal/coverage` (`CountTests`, `BuildPerTestProfile`) and `internal/filter` (`SourceLineRegexFilter`, `ShouldSkip`), raising quality-gate MSI to 77.75% / 83.78% covered.
 
 ### Fixed
-- `statement/return` mutator now correctly zeroes struct-typed return values by zero-initialising each field.
-- Guard conditions in several mutators refactored from `==` string comparisons to `switch` statements, eliminating equivalent mutations that could never be killed.
+- `statement/return` mutator now zeroes struct-typed return values using an empty composite literal (`T{}`).
+- Guard conditions in `expression/context-nil`, `expression/string-literal`, and `statement/remove` refactored from `==` string comparisons to `switch`, eliminating equivalent mutations.
+- GitLab report fingerprint now uses the stable `baseline.MutantID` hash, preventing deduplication of distinct mutations on the same line.
 
 ---
 

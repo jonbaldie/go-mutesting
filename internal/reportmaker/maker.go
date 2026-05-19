@@ -27,10 +27,13 @@ var mutatorDescriptions = map[string]string{
 	"branch/if":                    "Removes an if-block body so the condition becomes a no-op",
 	"branch/else":                  "Removes an else-block body",
 	"concurrency/goroutine_remove": "Converts a goroutine launch to a regular blocking call, removing concurrency",
+	"conditional/bool-literal":     "Swaps a hardcoded boolean literal (true↔false) in an assignment or function argument",
 	"conditional/negated":          "Negates a boolean or comparison condition (e.g. == becomes !=, < becomes >=)",
+	"conditional/not":              "Removes the logical-NOT operator from a negated condition (!x becomes x)",
 	"expression/comparison":        "Replaces a comparison operator with a boundary variant (e.g. < becomes <=)",
 	"expression/context-nil":       "Replaces a context argument with nil, bypassing deadline and cancellation propagation",
 	"expression/error-guard":       "Removes an error-guard block so the function continues even on error",
+	"expression/string-literal":    "Replaces a non-empty string literal in an == or != comparison with an empty string",
 	"expression/logical":           "Swaps a logical operator (&& becomes ||, or vice versa)",
 	"expression/remove":            "Removes an expression statement entirely, dropping its side effect",
 	"loop/break":                   "Removes a break statement, potentially causing an infinite loop",
@@ -41,6 +44,7 @@ var mutatorDescriptions = map[string]string{
 	"numbers/incrementer":          "Increments a numeric literal by 1",
 	"select/case_remove":           "Removes a case from a select statement, reducing channel handling paths",
 	"select/default_remove":        "Removes the default case from a select statement",
+	"statement/defer-remove":       "Turns a deferred call into an immediate call, removing the guaranteed-at-exit timing",
 	"statement/remove":             "Removes a statement entirely, dropping its side effect or return value",
 	"statement/remove-self-assign": "Removes a self-assignment statement (e.g. x = x)",
 	"statement/return":             "Replaces a return value with its zero value",
@@ -57,10 +61,13 @@ var killHints = map[string]string{
 	"branch/if":                    "Write a test that enters this branch and asserts the output or side effect it produces",
 	"branch/else":                  "Write a test where the else path is taken and assert its expected result",
 	"concurrency/goroutine_remove": "Write a test that asserts concurrent behaviour — e.g. a channel receive, a timing constraint, or a race-detector hit",
+	"conditional/bool-literal":     "Think about what a caller would observe if this flag were wrong. Write a test that drives the code via its public API with both values and asserts the different outcomes that a correct caller should see",
 	"conditional/negated":          "Write tests that exercise both the true and false paths of this condition and assert different outcomes for each",
+	"conditional/not":              "Think about what changes when the condition is satisfied vs not. Write tests that drive the code through both paths via its public API and assert the distinct outcomes a caller would see",
 	"expression/comparison":        "Write tests at the exact boundary value — one that satisfies the condition and one that doesn't — and assert different outcomes",
 	"expression/context-nil":       "Write a test that passes a context with a deadline or cancel and asserts the function respects it",
 	"expression/error-guard":       "Write a test that triggers the error condition and asserts the function returns the error rather than continuing",
+	"expression/string-literal":    "Think about what a caller expects when this string matches vs doesn't. Write a test that supplies a value that should match, and one that should not, and asserts the different outcomes a caller would see through the public API",
 	"expression/logical":           "Write tests where only one operand is true/false so && and || produce different outcomes",
 	"expression/remove":            "Write a test that asserts the side effect or state change this expression produces",
 	"loop/break":                   "Write a test that asserts the loop terminates at the right iteration",
@@ -71,6 +78,7 @@ var killHints = map[string]string{
 	"numbers/incrementer":          "Write a test that asserts the exact numeric value — off-by-one mutations are killed by precise equality assertions",
 	"select/case_remove":           "Write a test that sends on the removed channel case and asserts the expected receive or resulting action",
 	"select/default_remove":        "Write a test where no channel is ready (the default path) and assert its behaviour",
+	"statement/defer-remove":       "Think about what a caller would observe if cleanup happened too early. Write a test that checks the state visible to a caller after the function returns — e.g. a file is closed, a lock is released, a span is finished — and ensure it only happens at the right time",
 	"statement/remove":             "Write a test that asserts the side effect or state change this statement produces",
 	"statement/remove-self-assign": "Write a test that asserts the value is unchanged after a self-assignment — any mutation would alter it",
 	"statement/return":             "Write a test that asserts the exact return value — zero-value substitutions are caught by equality assertions",
@@ -340,7 +348,7 @@ func MakeGitLabReport(report models.Report, moduleRoot string) error {
 	issues := make([]gitLabIssue, 0, len(report.Escaped))
 	for _, m := range report.Escaped {
 		relFile := toRelPath(m.Mutator.OriginalFilePath, moduleRoot)
-		id := fmt.Sprintf("%s:%d:%s", relFile, m.Mutator.OriginalStartLine, m.Mutator.MutatorName)
+		id := baseline.MutantID(relFile, m.Mutator.MutatorName, m.Diff)
 		desc := fmt.Sprintf("Escaped mutant (%s) at %s:%d — no test kills this mutation",
 			m.Mutator.MutatorName, relFile, m.Mutator.OriginalStartLine)
 		issues = append(issues, gitLabIssue{

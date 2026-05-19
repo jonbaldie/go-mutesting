@@ -68,6 +68,14 @@
       },
       "default": [],
       "description": "Allowlist: if non-empty, only mutators matching these names run. Supports trailing-* wildcard (e.g. 'branch/*'). The CLI --disable flag can still exclude entries from this list."
+    },
+    "ignore_source_lines": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "List of regular expressions. Source lines that match any pattern are excluded from mutation. Useful for suppressing mutations on generated code, nolint annotations, or boilerplate lines."
     }
   }
 }
