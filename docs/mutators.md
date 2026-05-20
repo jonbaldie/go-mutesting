@@ -37,6 +37,12 @@ Inverts compound assignment operators.
 | `*=` | `/=` |
 | `/=` | `*=` |
 | `%=` | `*=` |
+| `&=` | `\|=` |
+| `\|=` | `&=` |
+| `^=` | `&=` |
+| `<<=` | `>>=` |
+| `>>=` | `<<=` |
+| `&^=` | `&=` |
 
 ### arithmetic/assignment
 Strips compound assignment operators, replacing them with plain `=`.
@@ -103,6 +109,21 @@ Empties the `default` branch of a `select` statement.
 ### conditional/negated
 Negates comparison operators — `>` becomes `<=`, `==` becomes `!=`, etc. Catches off-by-one and inverted condition bugs.
 
+### conditional/bool-literal
+Swaps `true`↔`false` in assignment right-hand sides and function call arguments. Finds hardcoded boolean values that tests never flip.
+
+| Original | Mutated |
+| :------- | :------ |
+| `x = true` | `x = false` |
+| `f(true)` | `f(false)` |
+
+### conditional/not
+Removes the `!` operator from negated conditions in `if`, `for`, and `&&`/`||` expressions. Finds negations that tests never exercise the non-negated path of.
+
+| Original | Mutated |
+| :------- | :------ |
+| `if !x { ... }` | `if x { ... }` |
+
 ## Branch
 
 ### branch/case
@@ -140,6 +161,13 @@ Replaces the condition of `if err != nil` / `if err == nil` guards with a boolea
 | `if err != nil` | `if false` |
 | `if err == nil` | `if true` |
 
+### expression/string-literal
+Replaces non-empty string literals in `==` and `!=` comparisons with `""`. Finds code that compares against a specific string value that tests never assert on.
+
+| Original | Mutated |
+| :------- | :------ |
+| `s == "expected"` | `s == ""` |
+
 ## Statement
 
 ### statement/remove
@@ -150,6 +178,13 @@ Removes self-assignment statements (`a = a`). These are typically dead code; thi
 
 ### statement/return
 Replaces each return value with the zero value for its type (`false` for bool, `0` for int, `""` for string, `nil` for pointers and interfaces). Uses `go/types` for type resolution. Finds functions whose return values tests never validate.
+
+### statement/defer-remove
+Removes the `defer` keyword, turning deferred calls into immediate calls. Tests whether the timing of cleanup matters — e.g. mutex unlocks and file closes that must happen after the function body, not during it.
+
+| Original | Mutated |
+| :------- | :------ |
+| `defer f()` | `f()` |
 
 ## Disabling mutators
 
