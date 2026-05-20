@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	mutator.Register("select/default_remove", MutatorSelectDefaultRemove)
+	mutator.Register("select/default-remove", MutatorSelectDefaultRemove)
 }
 
 // MutatorSelectDefaultRemove removes the default clause from a select statement.

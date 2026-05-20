@@ -82,7 +82,7 @@ Integration tests live in `cmd/go-mutesting/main_test.go`. They invoke `mainCmd`
 **Do not assert on hardcoded mutation counts.** Counts change whenever a mutator is added or the example test suite improves. They are implementation details, not public behaviour.
 
 **Assert on behaviour instead:**
-- The summary line appears (`"mutation score"` is always in the output).
+- The summary line appears (`"mutation score"` is always in the output for normal runs). Exception: `--run-mutant-id` suppresses the summary line and skips quality gates entirely.
 - Exit codes are correct (`returnOk`, `returnMsiThresholdNotMet`, etc.).
 - JSON report totals are internally consistent: `TotalMutantsCount == KilledCount + EscapedCount + ErrorCount + SkippedCount + NotCoveredCount`.
 - Collection lengths match stat fields: `len(Escaped) == EscapedCount`, `len(Killed) == KilledCount`.

@@ -595,7 +595,9 @@ MUTATOR:
 	}
 
 	if !opts.Exec.NoExec {
-		printSummary(report)
+		if opts.Exec.RunMutantID == "" {
+			printSummary(report)
+		}
 		if opts.Logger.GitHub {
 			printGitHubAnnotations(report)
 		}
@@ -641,6 +643,9 @@ MUTATOR:
 		console.Verbose(opts, "Save report into %q", models.ReportHTMLFileName)
 	}
 
+	if opts.Exec.RunMutantID != "" {
+		return returnOk
+	}
 	return checkQualityGates(opts, report, bl, moduleRoot)
 }
 

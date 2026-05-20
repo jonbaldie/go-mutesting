@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	mutator.Register("concurrency/goroutine_remove", MutatorGoroutineRemove)
+	mutator.Register("concurrency/goroutine-remove", MutatorGoroutineRemove)
 }
 
 // MutatorGoroutineRemove removes the go keyword from goroutine launches,

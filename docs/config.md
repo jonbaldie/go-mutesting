@@ -78,6 +78,8 @@ disable_mutators:
 
 Run `go-mutesting --list-mutators` to see all available names.
 
+> **Shell quoting**: when passing wildcard patterns via `--disable` on the command line, always quote them to prevent your shell from expanding `*` as a filename glob: `--disable 'arithmetic/*'`. In config files, no quoting is needed.
+
 ## Example
 
 ```yaml
