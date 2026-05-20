@@ -16,6 +16,7 @@ Beyond finding escaped mutants, go-mutesting can enforce quality gates in CI —
 | Parallel execution (all CPUs by default) | `--workers N` |
 | LLM-ready escaped-mutant report | `--logger-agentic-json` |
 | GitHub Actions annotations | `--logger-github` |
+| GitLab Code Quality report | `--logger-gitlab` |
 | Compact stats JSON for badges/dashboards | `--logger-summary-json` |
 | Per-mutator allowlist / denylist in config | `enable_mutators`, `disable_mutators` |
 | Extra flags for every `go test` call | `--test-flags` |
@@ -23,6 +24,10 @@ Beyond finding escaped mutants, go-mutesting can enforce quality gates in CI —
 | Quiet mode — suppress killed/skip noise | `--quiet` |
 | Suppress diff output | `--no-diffs` |
 | Dry-run mode — count mutations without running tests | `--dry-run` |
+| Pre-flight check — fail fast if tests already broken | `--noop` |
+| Fail on any escape without a score threshold | `--fail-on-escaped` |
+| Run a single mutant by stable ID | `--run-mutant-id` |
+| Scale per-mutation timeout by baseline run time | `--timeout-coefficient` |
 | Live progress display | automatic on TTY |
 
 ```bash
@@ -54,20 +59,6 @@ for _, d := range opts.Mutator.DisableMutators {
 
 The example shows that the right term `(!pattern && name == d)` of the `||` operator is made irrelevant by substituting it with `false`. Since this source code change is not detected by the test suite (the tests did not fail), we can mark it as untested code.
 
-The next mutation shows code from the `removeNode` method of a [linked list](https://github.com/avito-tech/container/blob/master/list/linkedlist/linkedlist.go) implementation.
-
-```diff
-	}
-
-	l.first = nil
--	l.last = nil
-+
-	l.len = 0
-}
-```
-
-We know that the code originates from a remove method which means that the mutation introduces a leak by ignoring the removal of a reference. This can be [tested](https://github.com/zimmski/container/commit/142c3e16a249095b0d63f2b41055d17cf059f045) with [go-leaks](https://github.com/zimmski/go-leak).
-
 ## <a name="table-of-content"></a>Table of contents
 
 - [What is mutation testing?](#what-is-mutation-testing)
@@ -83,7 +74,7 @@ We know that the code originates from a remove method which means that the mutat
   - [Mutation control via annotations](#mutation-annotations)
 - [How do I write my own mutation exec commands?](#write-mutation-exec-commands)
 - [Which mutators are implemented?](#list-of-mutators)
-- [Other mutation testing projects and their flaws](#other-projects)
+- [Other mutation testing tools for Go](#other-projects)
 - [Can I make feature requests and report bugs and problems?](#feature-request)
 
 ## <a name="what-is-mutation-testing"></a>What is mutation testing?
@@ -98,7 +89,7 @@ The definition of mutation testing is best quoted from Wikipedia:
 
 Although the definition focuses on finding code paths not covered by tests, other flaws can be found too. Mutation testing can for example uncover dead and unneeded code.
 
-Mutation testing is also especially interesting for comparing automatically generated test suites with manually written ones. This was the original intention of go-mutesting — it was built to evaluate the generic fuzzing and delta-debugging framework [Tavor](https://github.com/zimmski/tavor).
+Mutation testing is also especially interesting for comparing automatically generated test suites with manually written ones.
 
 It is also one of the strongest tools available for keeping AI-generated code honest. AI tools write plausible-looking code that often slips past code review. Mutation testing checks whether your tests would actually catch a bug — not just whether the code looks right.
 
@@ -260,6 +251,10 @@ go-mutesting --coverage --min-msi 50 --min-covered-msi 75 ./...
 
 The final summary includes a per-mutator breakdown so you can see which mutation types your tests are weakest against.
 
+Use `--noop` to run the test suite once without any mutations first. If the clean suite already fails, go-mutesting exits immediately rather than producing meaningless results.
+
+Use `--timeout-coefficient` to scale the per-mutation timeout relative to the baseline test-suite run time (e.g. `--timeout-coefficient 3` allows each mutation up to 3× the clean run). More reliable than a fixed `--exec-timeout` on machines with variable load.
+
 ### <a name="git-diff"></a>Git diff filtering (CI mode)
 
 `--git-diff-lines` limits mutation to lines changed since a given git ref. Combine it with `--ignore-msi-with-no-mutations` so the gate passes cleanly on PRs that touch no mutable code.
@@ -297,6 +292,8 @@ Commit `go-mutesting-baseline.json` to your repo. The baseline uses stable mutan
 go-mutesting --logger-agentic-json --quiet ./...
 ```
 
+Use `--run-mutant-id` to re-run a single mutant by its stable ID (copy the `id` field from `go-mutesting-agentic.json`). Useful for iterating on a specific test gap without waiting for the full suite.
+
 ### <a name="progress"></a>Live progress
 
 When running in a terminal, go-mutesting shows a live progress line on stderr (killed / escaped / skip counts). It clears automatically before the final summary. It is suppressed in `--verbose`, `--debug`, and silent mode.
@@ -331,6 +328,8 @@ jobs:
 ```
 
 `--logger-github` emits escaped mutants as `::warning` annotations that appear inline on the PR diff. `--coverage` excludes untested code from the covered-MSI denominator so you aren't penalised for dead code your tests never reach.
+
+For GitLab, replace `--logger-github` with `--logger-gitlab`. This writes `go-mutesting-gitlab.json` in GitLab Code Quality format, which GitLab CI picks up as a code quality report on merge requests.
 
 **Adopting gates on a legacy codebase**: record the current survivors first, then only fail on new regressions.
 
@@ -516,13 +515,19 @@ Examples for exec commands can be found in the [scripts](/scripts/exec) director
 | ShiftLeft     | <<       | \>>     |
 
 #### arithmetic/assign_invert
-| Name	        | Original | Mutated |
-| :------------ | :------- | :------ |
-| AddAssign     | +=       | -=      |
-| SubAssign     | -=       | +=      |
-| MulAssign     | *=       | /=      |
-| QuoAssign     | /=       | *=      |
-| RemAssign     | %=       | *=      |
+| Name	           | Original | Mutated |
+| :--------------- | :------- | :------ |
+| AddAssign        | +=       | -=      |
+| SubAssign        | -=       | +=      |
+| MulAssign        | *=       | /=      |
+| QuoAssign        | /=       | *=      |
+| RemAssign        | %=       | *=      |
+| AndAssign        | &=       | &#124;= |
+| OrAssign         | &#124;=  | &=      |
+| XorAssign        | ^=       | &=      |
+| ShlAssign        | <<=      | \>>=    |
+| ShrAssign        | \>>=     | <<=     |
+| AndNotAssign     | &^=      | &=      |
 
 #### arithmetic/assignment
 | Name	           | Original | Mutated |
@@ -615,6 +620,20 @@ Name	                          | Original | Mutated  |
 
 If you are looking for simple comparison mutators - see [expression-mutators](#expression-mutators)
 
+#### conditional/bool-literal
+Swaps `true`↔`false` in assignment right-hand sides and function call arguments. Finds hardcoded boolean values that tests never flip — e.g. a config flag that always stays at its default.
+
+| Name        | Original      | Mutated       |
+| :---------- | :------------ | :------------ |
+| BoolLiteral | x = true      | x = false     |
+
+#### conditional/not
+Removes the `!` operator from negated conditions in `if`, `for`, and `&&`/`||` expressions. Finds negations that tests never exercise the non-negated path of.
+
+| Name           | Original    | Mutated |
+| :------------- | :---------- | :------ |
+| ConditionalNot | if !x { ... } | if x { ... } |
+
 ### Branch mutators
 #### branch/case
 Empties case bodies.
@@ -662,6 +681,13 @@ Replaces the condition of `if err != nil` and `if err == nil` guards with a bool
 | ErrNotNil  | if err != nil     | if false        |
 | ErrIsNil   | if err == nil     | if true         |
 
+#### expression/string-literal
+Replaces non-empty string literals in `==` and `!=` comparisons with `""`. Finds code that compares against a specific string value that tests never assert on — e.g. `if err.Error() == "not found"` where an empty-string match would still pass.
+
+| Name          | Original                    | Mutated                  |
+| :------------ | :-------------------------- | :----------------------- |
+| StringLiteral | `s == "expected"`           | `s == ""`                |
+
 ### Statement mutators
 #### statement/remove
 Removes assignment, increment, decrement and expression statements.
@@ -671,6 +697,13 @@ Removes self-assignment statements (`a = a`). These are typically dead code; thi
 
 #### statement/return
 Replaces each return value with the zero value for its type (`false` for bool, `0` for int, `""` for string, `nil` for pointers and interfaces). Uses `go/types` for type resolution. Finds functions whose return values tests never validate.
+
+#### statement/defer-remove
+Removes the `defer` keyword, turning deferred calls into immediate calls. Tests whether the timing of cleanup matters — e.g. mutex unlocks and file closes that must happen after the function body, not during it.
+
+| Name        | Original   | Mutated |
+| :---------- | :--------- | :------ |
+| DeferRemove | defer f()  | f()     |
 
 ## Config file
 
@@ -692,6 +725,24 @@ The config contains the following parameters:
 | exclude_dirs         | []string(nil) | File path prefixes to skip. Any file whose path starts with one of these strings is excluded. `vendor/` skips all files under vendor; `internal/generated` skips any path starting with that string. |
 | disable_mutators     | []string(nil) | Mutator names to disable via config. Merged with `--disable` CLI flags. Supports trailing-`*` wildcard (e.g. `arithmetic/*`). |
 | enable_mutators      | []string(nil) | Allowlist: if non-empty, only matching mutators run. `--disable` can still exclude entries. Supports trailing-`*` wildcard. |
+| ignore_source_lines  | []string(nil) | List of regexes. Any source line matching one of these patterns is skipped entirely. Useful for suppressing mutations on generated code or boilerplate. |
+
+Example config file:
+
+```yaml
+skip_without_test: true
+min_msi: 70
+min_covered_msi: 80
+exclude_dirs:
+  - vendor/
+  - internal/generated
+disable_mutators:
+  - numbers/incrementer
+  - numbers/decrementer
+ignore_source_lines:
+  - "// Code generated"
+  - "nolint"
+```
 
 ## <a name="write-mutators"></a>How do I write my own mutators?
 
@@ -703,11 +754,11 @@ Examples for mutators can be found in the [github.com/jonbaldie/go-mutesting/v2/
 
 ## <a name="other-projects"></a>Other mutation testing tools for Go
 
-The two most active alternatives are [gremlins](https://github.com/singerdmx/gremlins) and the upstream [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting) fork that this project is based on.
+The main active alternative is [gremlins](https://github.com/singerdmx/gremlins). This project is forked from [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting), which has been inactive since late 2025.
 
 **gremlins** is well-maintained and simple to use. It has a clean CLI and a solid set of mutators. It does not have MSI quality gates, a baseline file, coverage-aware filtering, or a git-diff mode, so it works well for local exploration but is harder to wire into CI in a way that fails only on new regressions.
 
-**avito-tech/go-mutesting** is the direct upstream. This fork adds everything in the [features table](#features) at the top of this README.
+**avito-tech/go-mutesting** is the dormant upstream this project was forked from. This fork adds everything in the [features table](#features) above.
 
 If you want the smallest possible tool to run locally and see which mutants survive, gremlins is a reasonable choice. If you want to enforce mutation score thresholds in CI, track accepted escapes in a baseline, or pipe results to an LLM for test suggestions, this tool is the better fit.
 
