@@ -643,6 +643,9 @@ MUTATOR:
 		console.Verbose(opts, "Save report into %q", models.ReportHTMLFileName)
 	}
 
+	if opts.Exec.RunMutantID != "" {
+		return returnOk
+	}
 	return checkQualityGates(opts, report, bl, moduleRoot)
 }
 
