@@ -2,7 +2,7 @@ name: Mutation Testing
 
 on:
   push:
-    branches: [master, feature/parity]
+    branches: [master]
   pull_request:
     branches: [master]
 
@@ -26,8 +26,8 @@ jobs:
         # Scoped to packages with isolated unit tests.
         # Excluded:
         #   cmd/               - integration tests re-invoke the binary (would recurse)
-        #   internal/importing  - package-based resolution requires GOPATH mode
-        #   internal/parser     - uses deprecated go/loader; excluded until migration
+        #   internal/importing  - resolution behaviour depends on GOPATH layout; excluded from mutation targets
+        #   internal/parser     - excluded from mutation targets (type-checker setup is test-infrastructure, not user logic)
         # --coverage generates a profile before mutation to compute covered-code MSI
         # and marks mutants in untested code as "not covered" rather than running them.
         # --min-msi and --min-covered-msi enforce quality gates.
