@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [v2.6.10] — 2026-05-20
+
+### Performance
+- `packages.Load` is now cached per directory in `ParseAndTypeCheckFile`. For a package with N files, the type-checker runs once instead of N times — reducing dry-run time by 66% (4.8 s → 1.6 s for a 4-package run) and overall user CPU by ~31%.
+- `format.Source` on the original file is now computed once per source file in `mutate()` and passed pre-formatted into `saveAST`, eliminating a redundant `gofmt` call for every mutation. The improvement scales with worker count: ~7.6% wall-time reduction with default workers, ~4.3% with `--workers 1`.
+
+### Fixed
+- Integration tests now call `parser.ClearPackageCache()` between runs to prevent a stale cached AST from leaking into subsequent tests when the `--exec` script writes to the original file on disk.
+
+---
+
 ## [v2.6.9] — 2026-05-20
 
 ### Added
@@ -244,4 +255,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 ---
 
 [v2.6.7]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.7
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.9...HEAD
+[v2.6.10]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.9...v2.6.10

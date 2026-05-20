@@ -790,6 +790,12 @@ func mutate(
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Pre-format the original once; saveAST needs the formatted version for
+	// duplicate detection and would otherwise re-format it for every mutation.
+	fmtOriginal, fmtErr := format.Source(originalSourceCode)
+	if fmtErr != nil {
+		fmtOriginal = originalSourceCode
+	}
 
 	// In dry-run mode collect per-mutator counts and print after the file is done.
 	var dryRunCounts map[string]int
@@ -829,7 +835,7 @@ func mutate(
 			mutant.Mutator.OriginalSourceCode = string(originalSourceCode)
 
 			mutationFile := fmt.Sprintf("%s.%d", mutatedFile, mutationID)
-			checksum, duplicate, err := saveAST(mutationBlackList, mutationFile, fset, src, originalSourceCode)
+			checksum, duplicate, err := saveAST(mutationBlackList, mutationFile, fset, src, fmtOriginal)
 			if err != nil {
 				out := fmt.Sprintf("INTERNAL ERROR %s\n", err.Error())
 				fmt.Printf("%s", out)
@@ -1171,7 +1177,9 @@ func main() {
 // The checksum is derived from only the lines that differ between original
 // and mutated source, so it survives edits to surrounding code that would
 // otherwise invalidate a blacklist entry.
-func saveAST(mutationBlackList map[string]struct{}, file string, fset *token.FileSet, node ast.Node, originalContent []byte) (string, bool, error) {
+// saveAST writes the mutated AST to file and returns a dedup checksum. fmtOriginal
+// must already be gofmt-formatted (call format.Source once per file, not per mutation).
+func saveAST(mutationBlackList map[string]struct{}, file string, fset *token.FileSet, node ast.Node, fmtOriginal []byte) (string, bool, error) {
 	var buf bytes.Buffer
 
 	if err := printer.Fprint(&buf, fset, node); err != nil {
@@ -1183,13 +1191,7 @@ func saveAST(mutationBlackList map[string]struct{}, file string, fset *token.Fil
 		return "", false, err
 	}
 
-	// Normalize the original so formatting differences don't create phantom diffs.
-	fmtOrig, fmtErr := format.Source(originalContent)
-	if fmtErr != nil {
-		fmtOrig = originalContent
-	}
-
-	checksum := stableMutationKey(fmtOrig, mutatedSrc)
+	checksum := stableMutationKey(fmtOriginal, mutatedSrc)
 
 	if _, ok := mutationBlackList[checksum]; ok {
 		return checksum, true, nil

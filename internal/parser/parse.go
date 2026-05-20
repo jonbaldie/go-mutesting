@@ -9,11 +9,73 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"golang.org/x/tools/go/packages"
 
 	"github.com/jonbaldie/go-mutesting/v2/internal/filter"
 )
+
+// pkgCacheEntry holds the result of loading a package directory via packages.Load.
+type pkgCacheEntry struct {
+	pkgs []*packages.Package
+	fset *token.FileSet
+	err  error
+}
+
+var (
+	pkgCacheMu sync.Mutex
+	pkgCache   = map[string]*pkgCacheEntry{}
+)
+
+// ClearPackageCache resets the directory-level package-load cache.
+// Call this in tests that need a clean state between ParseAndTypeCheckFile invocations.
+func ClearPackageCache() {
+	pkgCacheMu.Lock()
+	pkgCache = map[string]*pkgCacheEntry{}
+	pkgCacheMu.Unlock()
+}
+
+// loadPkgForDir returns the cached packages.Load result for dir, computing it on first
+// access. Subsequent calls for the same directory return the cached value without
+// re-invoking the type-checker. Safe for concurrent use.
+func loadPkgForDir(dir string) *pkgCacheEntry {
+	pkgCacheMu.Lock()
+	if entry, ok := pkgCache[dir]; ok {
+		pkgCacheMu.Unlock()
+		return entry
+	}
+	pkgCacheMu.Unlock()
+
+	fset := token.NewFileSet()
+	cfg := &packages.Config{
+		Mode: packages.NeedName |
+			packages.NeedFiles |
+			packages.NeedSyntax |
+			packages.NeedTypes |
+			packages.NeedTypesInfo |
+			packages.NeedImports |
+			packages.NeedDeps,
+		Dir:  dir,
+		Fset: fset,
+		ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
+			return parser.ParseFile(fset, filename, src, parser.AllErrors|parser.ParseComments)
+		},
+	}
+	pkgs, loadErr := packages.Load(cfg, ".")
+	entry := &pkgCacheEntry{pkgs: pkgs, fset: fset, err: loadErr}
+
+	pkgCacheMu.Lock()
+	// Double-check: another goroutine may have stored first.
+	if existing, ok := pkgCache[dir]; ok {
+		pkgCacheMu.Unlock()
+		return existing
+	}
+	pkgCache[dir] = entry
+	pkgCacheMu.Unlock()
+
+	return entry
+}
 
 // ParseFile parses the content of the given file and returns the corresponding ast.File node and its file set for positional information.
 // If a fatal error is encountered the error return argument is not nil.
@@ -48,35 +110,19 @@ func ParseAndTypeCheckFile(file string, collectors []filter.NodeCollector) (*ast
 	}
 	dir := filepath.Dir(fileAbs)
 
-	fset := token.NewFileSet()
-	cfg := &packages.Config{
-		Mode: packages.NeedName |
-			packages.NeedFiles |
-			packages.NeedSyntax |
-			packages.NeedTypes |
-			packages.NeedTypesInfo |
-			packages.NeedImports |
-			packages.NeedDeps,
-		Dir:  dir,
-		Fset: fset,
-		ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
-			return parser.ParseFile(fset, filename, src, parser.AllErrors|parser.ParseComments)
-		},
+	entry := loadPkgForDir(dir)
+	if entry.err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("Could not load package of file %q: %v", file, entry.err)
 	}
 
-	pkgs, err := packages.Load(cfg, ".")
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("Could not load package of file %q: %v", file, err)
-	}
-
-	if len(pkgs) > 0 {
-		pkg := pkgs[0]
+	if len(entry.pkgs) > 0 {
+		pkg := entry.pkgs[0]
 		for _, f := range pkg.Syntax {
-			if fset.Position(f.Pos()).Filename == fileAbs {
+			if entry.fset.Position(f.Pos()).Filename == fileAbs {
 				for _, c := range collectors {
-					c.Collect(f, fset, fileAbs)
+					c.Collect(f, entry.fset, fileAbs)
 				}
-				return f, fset, pkg.Types, pkg.TypesInfo, nil
+				return f, entry.fset, pkg.Types, pkg.TypesInfo, nil
 			}
 		}
 	}
@@ -84,18 +130,18 @@ func ParseAndTypeCheckFile(file string, collectors []filter.NodeCollector) (*ast
 	// The file was not found in the loaded package syntax (e.g., excluded by
 	// //go:build constraints in testdata fixtures). Fall back to direct parsing
 	// and standalone type-checking, bypassing build constraints.
-	src, typPkg, typInfo, err := parseAndTypeCheckDirect(fset, fileAbs)
+	src, typPkg, typInfo, err := parseAndTypeCheckDirect(entry.fset, fileAbs)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
 	if src != nil {
 		for _, c := range collectors {
-			c.Collect(src, fset, fileAbs)
+			c.Collect(src, entry.fset, fileAbs)
 		}
 	}
 
-	return src, fset, typPkg, typInfo, nil
+	return src, entry.fset, typPkg, typInfo, nil
 }
 
 // parseAndTypeCheckDirect parses a file directly (ignoring build constraints)
