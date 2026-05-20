@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
-## [Unreleased]
+## [v2.6.11] — 2026-05-20
 
 ### Added
 - `.github/dependabot.yml`: weekly grouped Dependabot PRs for Go modules and GitHub Actions.
@@ -269,3 +269,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 [v2.6.7]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.7
 [v2.6.10]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.9...v2.6.10
+[v2.6.11]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.10...v2.6.11
