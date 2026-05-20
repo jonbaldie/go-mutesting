@@ -6,6 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [v2.6.9] — 2026-05-20
+
+### Added
+- `conditional/bool-literal`, `conditional/not`, `expression/string-literal`, and `statement/defer-remove` mutators documented in README and docs site (were present in code since v2.6.7 but missing from docs).
+- `arithmetic/assign_invert` table completed with six bitwise compound assignments (`&=`, `|=`, `^=`, `<<=`, `>>=`, `&^=`).
+- `ignore_source_lines` config key documented in README and docs/config.md.
+- `--logger-gitlab`, `--noop`, `--fail-on-escaped`, `--run-mutant-id`, `--timeout-coefficient` added to README features table and docs/cli.md.
+- Full documentation link (`https://jonbaldie.github.io/go-mutesting/`) added to README.
+- Example YAML config file added to README.
+
+### Fixed
+- Removed dead content: linked-list `removeNode` example (linked to inactive `avito-tech/container` repo) and Tavor framework reference.
+- Corrected avito-tech description: inactive since late 2025, not an active alternative.
+- Typos: `origianl`, `generate`/`generates`, `possible`/`possibly`, `Negotiation`/`Negation` (×4).
+- Non-native phrasing inherited from upstream forks; broken `#this-fork` and `#expression-mutators` anchors.
+- ToC entry "Other mutation testing projects and their flaws" now matches the actual heading.
+
+[v2.6.9]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.9
+
+---
+
 ## [v2.6.8] — 2026-05-19
 
 ### Added
@@ -223,4 +244,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 ---
 
 [v2.6.7]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.7
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.7...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.9...HEAD
