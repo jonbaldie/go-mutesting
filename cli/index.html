@@ -792,6 +792,11 @@
 <td style="text-align: left;">Seconds to wait before killing the test process</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>--timeout-coefficient</code></td>
+<td style="text-align: left;"><code>0</code> (disabled)</td>
+<td style="text-align: left;">Scale per-mutation timeout as a multiple of the baseline test-suite run time (e.g. <code>3</code> = 3× the clean run). Overrides <code>--exec-timeout</code> when set.</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>--workers</code></td>
 <td style="text-align: left;">all CPUs</td>
 <td style="text-align: left;">Number of parallel mutation workers</td>
@@ -815,6 +820,10 @@
 <tr>
 <td style="text-align: left;"><code>--dry-run</code></td>
 <td style="text-align: left;">Count mutations per file and mutator without generating files or running tests; prints a summary table and exits 0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--noop</code></td>
+<td style="text-align: left;">Run the test suite once without any mutations first; exits immediately if the clean suite fails</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--no-diffs</code></td>
@@ -841,12 +850,20 @@
 <td style="text-align: left;">Emit escaped mutants as <code>::warning</code> GitHub Actions annotations</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>--logger-gitlab</code></td>
+<td style="text-align: left;">Write <code>go-mutesting-gitlab.json</code> in GitLab Code Quality format</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>--logger-summary-json</code></td>
 <td style="text-align: left;">Write compact stats to <code>go-mutesting-summary.json</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--logger-agentic-json</code></td>
 <td style="text-align: left;">Write LLM-ready report to <code>go-mutesting-agentic.json</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--run-mutant-id</code></td>
+<td style="text-align: left;">Run only the mutant with this stable ID (copy the <code>id</code> field from <code>go-mutesting-agentic.json</code>)</td>
 </tr>
 </tbody>
 </table>

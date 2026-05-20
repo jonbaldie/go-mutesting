@@ -689,6 +689,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#conditionalbool-literal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        conditional/bool-literal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conditionalnot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        conditional/not
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -811,6 +833,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#expressionstring-literal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        expression/string-literal
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -855,6 +888,17 @@
     <span class="md-ellipsis">
       
         statement/return
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#statementdefer-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        statement/defer-remove
       
     </span>
   </a>
@@ -1281,6 +1325,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#conditionalbool-literal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        conditional/bool-literal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conditionalnot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        conditional/not
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1403,6 +1469,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#expressionstring-literal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        expression/string-literal
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1447,6 +1524,17 @@
     <span class="md-ellipsis">
       
         statement/return
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#statementdefer-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        statement/defer-remove
       
     </span>
   </a>
@@ -1590,6 +1678,30 @@
 <td style="text-align: left;"><code>%=</code></td>
 <td style="text-align: left;"><code>*=</code></td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>&amp;=</code></td>
+<td style="text-align: left;"><code>\|=</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>\|=</code></td>
+<td style="text-align: left;"><code>&amp;=</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>^=</code></td>
+<td style="text-align: left;"><code>&amp;=</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>&lt;&lt;=</code></td>
+<td style="text-align: left;"><code>&gt;&gt;=</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>&gt;&gt;=</code></td>
+<td style="text-align: left;"><code>&lt;&lt;=</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>&amp;^=</code></td>
+<td style="text-align: left;"><code>&amp;=</code></td>
+</tr>
 </tbody>
 </table>
 <h3 id="arithmeticassignment">arithmetic/assignment<a class="headerlink" href="#arithmeticassignment" title="Permanent link">&para;</a></h3>
@@ -1689,6 +1801,42 @@
 <h2 id="conditional">Conditional<a class="headerlink" href="#conditional" title="Permanent link">&para;</a></h2>
 <h3 id="conditionalnegated">conditional/negated<a class="headerlink" href="#conditionalnegated" title="Permanent link">&para;</a></h3>
 <p>Negates comparison operators — <code>&gt;</code> becomes <code>&lt;=</code>, <code>==</code> becomes <code>!=</code>, etc. Catches off-by-one and inverted condition bugs.</p>
+<h3 id="conditionalbool-literal">conditional/bool-literal<a class="headerlink" href="#conditionalbool-literal" title="Permanent link">&para;</a></h3>
+<p>Swaps <code>true</code>↔<code>false</code> in assignment right-hand sides and function call arguments. Finds hardcoded boolean values that tests never flip.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Original</th>
+<th style="text-align: left;">Mutated</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>x = true</code></td>
+<td style="text-align: left;"><code>x = false</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>f(true)</code></td>
+<td style="text-align: left;"><code>f(false)</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="conditionalnot">conditional/not<a class="headerlink" href="#conditionalnot" title="Permanent link">&para;</a></h3>
+<p>Removes the <code>!</code> operator from negated conditions in <code>if</code>, <code>for</code>, and <code>&amp;&amp;</code>/<code>||</code> expressions. Finds negations that tests never exercise the non-negated path of.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Original</th>
+<th style="text-align: left;">Mutated</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>if !x { ... }</code></td>
+<td style="text-align: left;"><code>if x { ... }</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="branch">Branch<a class="headerlink" href="#branch" title="Permanent link">&para;</a></h2>
 <h3 id="branchcase">branch/case<a class="headerlink" href="#branchcase" title="Permanent link">&para;</a></h3>
 <p>Empties <code>case</code> bodies in <code>switch</code> statements.</p>
@@ -1739,6 +1887,22 @@
 </tr>
 </tbody>
 </table>
+<h3 id="expressionstring-literal">expression/string-literal<a class="headerlink" href="#expressionstring-literal" title="Permanent link">&para;</a></h3>
+<p>Replaces non-empty string literals in <code>==</code> and <code>!=</code> comparisons with <code>""</code>. Finds code that compares against a specific string value that tests never assert on.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Original</th>
+<th style="text-align: left;">Mutated</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>s == "expected"</code></td>
+<td style="text-align: left;"><code>s == ""</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="statement">Statement<a class="headerlink" href="#statement" title="Permanent link">&para;</a></h2>
 <h3 id="statementremove">statement/remove<a class="headerlink" href="#statementremove" title="Permanent link">&para;</a></h3>
 <p>Removes assignment, increment, decrement, and expression statements.</p>
@@ -1746,6 +1910,22 @@
 <p>Removes self-assignment statements (<code>a = a</code>). These are typically dead code; this mutator confirms tests don't accidentally rely on them.</p>
 <h3 id="statementreturn">statement/return<a class="headerlink" href="#statementreturn" title="Permanent link">&para;</a></h3>
 <p>Replaces each return value with the zero value for its type (<code>false</code> for bool, <code>0</code> for int, <code>""</code> for string, <code>nil</code> for pointers and interfaces). Uses <code>go/types</code> for type resolution. Finds functions whose return values tests never validate.</p>
+<h3 id="statementdefer-remove">statement/defer-remove<a class="headerlink" href="#statementdefer-remove" title="Permanent link">&para;</a></h3>
+<p>Removes the <code>defer</code> keyword, turning deferred calls into immediate calls. Tests whether the timing of cleanup matters — e.g. mutex unlocks and file closes that must happen after the function body, not during it.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Original</th>
+<th style="text-align: left;">Mutated</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>defer f()</code></td>
+<td style="text-align: left;"><code>f()</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="disabling-mutators">Disabling mutators<a class="headerlink" href="#disabling-mutators" title="Permanent link">&para;</a></h2>
 <p>Use <code>--disable &lt;name&gt;</code> to turn off a specific mutator:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>go-mutesting<span class="w"> </span>--disable<span class="w"> </span>statement/remove<span class="w"> </span>./...
