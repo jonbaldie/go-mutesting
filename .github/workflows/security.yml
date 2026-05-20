@@ -23,8 +23,6 @@ jobs:
           go-version-file: go.mod
 
       - name: Vulnerability scan
-        # Advisory-only until go1.26.3 is released (fixes GO-2026-4980/4982).
-        # Remove '|| true' once go1.26.3 is available to make this enforcing.
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
-          govulncheck ./... || true
+          govulncheck ./...
