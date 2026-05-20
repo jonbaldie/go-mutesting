@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jonbaldie/go-mutesting/v2/internal/models"
+	"github.com/jonbaldie/go-mutesting/v2/internal/parser"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -253,6 +254,11 @@ func TestMainConfigEnableMutators(t *testing.T) {
 }
 
 func testMain(t *testing.T, root string, exec []string, expectedExitCode int, contains string) {
+	// Clear the parser cache so each test loads files fresh from disk.
+	// Without this, TestMainMatch's exec script (which writes to the original
+	// file on disk) can leave the cache holding a stale AST for later tests.
+	parser.ClearPackageCache()
+
 	saveStderr := os.Stderr
 	saveStdout := os.Stdout
 	saveCwd, err := os.Getwd()
