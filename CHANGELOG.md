@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [Unreleased]
+
+### Performance
+- `packages.Load` is now cached per directory in `ParseAndTypeCheckFile`. For a package with N files, the type-checker runs once instead of N times — reducing dry-run time by 66% (4.8 s → 1.6 s for a 4-package run) and overall user CPU by ~31%.
+- `format.Source` on the original file is now computed once per source file in `mutate()` and passed pre-formatted into `saveAST`, eliminating a redundant `gofmt` call for every mutation. The improvement scales with worker count: ~7.6% wall-time reduction with default workers, ~4.3% with `--workers 1`.
+
+---
+
 ## [v2.6.9] — 2026-05-20
 
 ### Added
