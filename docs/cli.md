@@ -16,6 +16,7 @@ Targets can be Go source files, directories, or import paths. The `...` wildcard
 | :--- | :------ | :---------- |
 | `--exec` | (built-in) | Custom exec command for testing each mutation |
 | `--exec-timeout` | `10` | Seconds to wait before killing the test process |
+| `--timeout-coefficient` | `0` (disabled) | Scale per-mutation timeout as a multiple of the baseline test-suite run time (e.g. `3` = 3× the clean run). Overrides `--exec-timeout` when set. |
 | `--workers` | all CPUs | Number of parallel mutation workers |
 | `--config` | — | Path to YAML config file |
 
@@ -24,14 +25,17 @@ Targets can be Go source files, directories, or import paths. The `...` wildcard
 | Flag | Description |
 | :--- | :---------- |
 | `--dry-run` | Count mutations per file and mutator without generating files or running tests; prints a summary table and exits 0 |
+| `--noop` | Run the test suite once without any mutations first; exits immediately if the clean suite fails |
 | `--no-diffs` | Suppress diff output for all mutation results (useful in CI where diffs are noisy and the JSON report is consumed instead) |
 | `--output-statuses` | Show only listed result statuses in the terminal: `k`=killed `e`=escaped `s`=skipped `n`=not-covered `x`=errored (e.g. `--output-statuses=ke`). Does not affect JSON reports. Overrides `--quiet` when set. |
 | `--quiet` | Suppress killed/skipped lines; show only escaped mutants and summary (equivalent to `--output-statuses=e`) |
 | `--verbose` | Print full test output for each mutation |
 | `--debug` | Print internal debug information |
 | `--logger-github` | Emit escaped mutants as `::warning` GitHub Actions annotations |
+| `--logger-gitlab` | Write `go-mutesting-gitlab.json` in GitLab Code Quality format |
 | `--logger-summary-json` | Write compact stats to `go-mutesting-summary.json` |
 | `--logger-agentic-json` | Write LLM-ready report to `go-mutesting-agentic.json` |
+| `--run-mutant-id` | Run only the mutant with this stable ID (copy the `id` field from `go-mutesting-agentic.json`) |
 
 ## Quality gates
 
