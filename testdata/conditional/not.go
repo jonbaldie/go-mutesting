@@ -13,4 +13,4 @@ func f(a, b bool) bool {
 	return true
 }
 
-func main()	{}
+func main() {}

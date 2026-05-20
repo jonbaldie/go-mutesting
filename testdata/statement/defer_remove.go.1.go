@@ -3,11 +3,11 @@
 
 package main
 
-func cleanup()	{}
+func cleanup() {}
 
 func foo() {
 	defer cleanup()
 	cleanup()
 }
 
-func main()	{}
+func main() {}

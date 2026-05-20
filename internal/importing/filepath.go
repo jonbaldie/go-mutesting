@@ -29,28 +29,7 @@ var (
 )
 
 func packagesWithFilesOfArgs(args []string, opts *models.Options) map[string]map[string]struct{} {
-	var filenames []string
-
-	if len(args) == 0 {
-		filenames = append(filenames, checkDir(".")...)
-	} else {
-		for _, arg := range args {
-			if strings.HasSuffix(arg, "/...") && isDir(arg[:len(arg)-4]) {
-				for _, dirname := range allPackagesInFS(arg) {
-					filenames = append(filenames, checkDir(dirname)...)
-				}
-			} else if isDir(arg) {
-				filenames = append(filenames, checkDir(arg)...)
-			} else if exists(arg) {
-				filenames = append(filenames, arg)
-			} else {
-				for _, pkgname := range importPaths([]string{arg}) {
-					filenames = append(filenames, checkPackage(pkgname)...)
-				}
-			}
-		}
-	}
-
+	filenames := resolveFileList(args)
 	fileLookup := make(map[string]struct{})
 	pkgs := make(map[string]map[string]struct{})
 
@@ -58,64 +37,74 @@ func packagesWithFilesOfArgs(args []string, opts *models.Options) map[string]map
 		if _, ok := fileLookup[filename]; ok {
 			continue
 		}
-
-		if len(opts.Config.ExcludeDirs) > 0 { // ignore files in excluded dirs
-			dirIsExcluded := false
-			for _, exDir := range opts.Config.ExcludeDirs {
-				if strings.HasPrefix(filename, exDir) {
-					dirIsExcluded = true
-					break
-				}
-			}
-
-			if dirIsExcluded {
-				continue
-			}
-		}
-
-		if strings.HasSuffix(filename, testFileSuffix) { // ignore test files
+		if shouldSkipFile(filename, opts) {
 			continue
 		}
-
-		if opts.Config.SkipFileWithoutTest || opts.Config.SkipFileWithBuildTag { // ignore files without tests
-			nameSize := len(filename)
-			if nameSize <= 3 {
-				continue
-			}
-
-			testName := filename[:nameSize-3] + testFileSuffix
-			if !exists(testName) {
-				continue
-			}
-
-			if opts.Config.SkipFileWithBuildTag { // ignore files with test with build tags
-				isBuildTag := regexpSearchInFile(testName, buildTagRegex)
-				if isBuildTag {
-					continue
-				}
-			}
-		}
-
 		if !exists(filename) {
 			fmt.Printf("%q does not exist", filename)
-
 			continue
 		}
 		fileLookup[filename] = struct{}{}
-
 		pkgName := path.Dir(filename)
-
 		pkg, ok := pkgs[pkgName]
 		if !ok {
 			pkg = make(map[string]struct{})
-
 			pkgs[pkgName] = pkg
 		}
-
 		pkg[filename] = struct{}{}
 	}
 
 	return pkgs
+}
+
+// resolveFileList expands args into a flat list of .go filenames.
+func resolveFileList(args []string) []string {
+	var filenames []string
+	if len(args) == 0 {
+		return append(filenames, checkDir(".")...)
+	}
+	for _, arg := range args {
+		if strings.HasSuffix(arg, "/...") && isDir(arg[:len(arg)-4]) {
+			for _, dirname := range allPackagesInFS(arg) {
+				filenames = append(filenames, checkDir(dirname)...)
+			}
+		} else if isDir(arg) {
+			filenames = append(filenames, checkDir(arg)...)
+		} else if exists(arg) {
+			filenames = append(filenames, arg)
+		} else {
+			for _, pkgname := range importPaths([]string{arg}) {
+				filenames = append(filenames, checkPackage(pkgname)...)
+			}
+		}
+	}
+	return filenames
+}
+
+// shouldSkipFile reports whether filename should be excluded from mutation.
+func shouldSkipFile(filename string, opts *models.Options) bool {
+	if strings.HasSuffix(filename, testFileSuffix) {
+		return true
+	}
+	for _, exDir := range opts.Config.ExcludeDirs {
+		if strings.HasPrefix(filename, exDir) {
+			return true
+		}
+	}
+	if opts.Config.SkipFileWithoutTest || opts.Config.SkipFileWithBuildTag {
+		nameSize := len(filename)
+		if nameSize <= 3 {
+			return true
+		}
+		testName := filename[:nameSize-3] + testFileSuffix
+		if !exists(testName) {
+			return true
+		}
+		if opts.Config.SkipFileWithBuildTag && regexpSearchInFile(testName, buildTagRegex) {
+			return true
+		}
+	}
+	return false
 }
 
 func regexpSearchInFile(file string, re *regexp.Regexp) bool {

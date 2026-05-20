@@ -19,7 +19,7 @@ import (
 //	  - "assert\\."      # skip lines that call assertion helpers
 //	  - "//\\s*nolint"   # skip lines with nolint directives
 type SourceLineRegexFilter struct {
-	patterns      []*regexp.Regexp
+	patterns         []*regexp.Regexp
 	skippedPositions map[token.Pos]struct{}
 }
 

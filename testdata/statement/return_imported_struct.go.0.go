@@ -9,4 +9,4 @@ func makeImagePoint() image.Point {
 	return image.Point{}
 }
 
-func main()	{}
+func main() {}

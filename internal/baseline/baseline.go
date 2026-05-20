@@ -21,8 +21,8 @@ import (
 
 // File is the on-disk baseline format.
 type File struct {
-	Version int        `json:"version"`
-	Mutants []Entry    `json:"mutants"`
+	Version int     `json:"version"`
+	Mutants []Entry `json:"mutants"`
 }
 
 // Entry describes one known-surviving mutant.

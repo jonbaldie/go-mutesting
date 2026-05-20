@@ -11,4 +11,4 @@ func makePoint() Point {
 	return Point{}
 }
 
-func main()	{}
+func main() {}
