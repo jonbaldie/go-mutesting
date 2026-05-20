@@ -39,7 +39,7 @@ The following command mutates the go-mutesting project with all available mutato
 go-mutesting github.com/jonbaldie/go-mutesting/v2/...
 ```
 
-The execution of this command prints for every mutation if it was successfully tested or not. If not, the source code patch is printed out, so the mutation can be investigated. The following shows an example for a patch of a mutation.
+For each mutation the tool prints whether the tests caught it. If they didn't, the source code patch is printed so the mutation can be investigated. The following shows an example patch.
 
 ```diff
 for _, d := range opts.Mutator.DisableMutators {
@@ -52,7 +52,7 @@ for _, d := range opts.Mutator.DisableMutators {
 }
 ```
 
-The example shows that the right term `(!pattern && name == d)` of the `||` operator is made irrelevant by substituting it with `false`. Since this change of the source code is not detected by the test suite, meaning the test suite did not fail, we can mark it as untested code.
+The example shows that the right term `(!pattern && name == d)` of the `||` operator is made irrelevant by substituting it with `false`. Since this source code change is not detected by the test suite (the tests did not fail), we can mark it as untested code.
 
 The next mutation shows code from the `removeNode` method of a [linked list](https://github.com/avito-tech/container/blob/master/list/linkedlist/linkedlist.go) implementation.
 
@@ -68,7 +68,7 @@ The next mutation shows code from the `removeNode` method of a [linked list](htt
 
 We know that the code originates from a remove method which means that the mutation introduces a leak by ignoring the removal of a reference. This can be [tested](https://github.com/zimmski/container/commit/142c3e16a249095b0d63f2b41055d17cf059f045) with [go-leaks](https://github.com/zimmski/go-leak).
 
-## <a name="table-of-content"></a>Table of content
+## <a name="table-of-content"></a>Table of contents
 
 - [What is mutation testing?](#what-is-mutation-testing)
 - [How do I use go-mutesting?](#how-do-i-use-go-mutesting)
@@ -96,15 +96,15 @@ The definition of mutation testing is best quoted from Wikipedia:
 > Tests can be created to verify the correctness of the implementation of a given software system, but the creation of tests still poses the question whether the tests are correct and sufficiently cover the requirements that have originated the implementation.
 > <br/>-- <cite>[https://en.wikipedia.org/wiki/Mutation_testing](https://en.wikipedia.org/wiki/Mutation_testing)</cite>
 
-Although the definition states that the main purpose of mutation testing is finding implementation cases which are not covered by tests, other implementation flaws can be found too. Mutation testing can for example uncover dead and unneeded code.
+Although the definition focuses on finding code paths not covered by tests, other flaws can be found too. Mutation testing can for example uncover dead and unneeded code.
 
-Mutation testing is also especially interesting for comparing automatically generated test suites with manually written test suites. This was the original intention of go-mutesting which is used to evaluate the generic fuzzing and delta-debugging framework [Tavor](https://github.com/zimmski/tavor).
+Mutation testing is also especially interesting for comparing automatically generated test suites with manually written ones. This was the original intention of go-mutesting — it was built to evaluate the generic fuzzing and delta-debugging framework [Tavor](https://github.com/zimmski/tavor).
 
 It is also one of the strongest tools available for keeping AI-generated code honest. AI tools write plausible-looking code that often slips past code review. Mutation testing checks whether your tests would actually catch a bug — not just whether the code looks right.
 
 ## <a name="how-do-i-use-go-mutesting"></a>How do I use go-mutesting?
 
-go-mutesting includes a binary which is go-getable.
+Install the binary with `go install`:
 
 ```bash
 go install -v github.com/jonbaldie/go-mutesting/v2/...
@@ -120,7 +120,7 @@ go-mutesting --help
 
 The targets of the mutation testing can be defined as arguments to the binary. Every target can be either a Go source file, a directory or a package. Directories and packages can also include the `...` wildcard pattern which will search recursively for Go source files. Test source files with the suffix `_test` are excluded, since this would interfere with the testing process most of the time.
 
-The following example gathers all Go files which are defined by the targets and generate mutations with all available mutators of the binary.
+The following example gathers all Go files from the given targets and generates mutations with all available mutators.
 
 ```bash
 go-mutesting parse.go example/ github.com/jonbaldie/go-mutesting/v2/mutator/...
@@ -224,12 +224,10 @@ The covered-code mutation score is 0.00%
 By comparing this output to the original output we can state that we now have 7 mutations instead of 8.
 
 ### <a name="skip-make-args"></a>Skipping make() arguments mutation
-Problem: Useless and unwanted mutations in make() calls
 
-Before this filter, numeric arguments in make() calls for slices/maps were mutated by incrementer/decrementer mutators, 
-leading to false positives or invalid code:
+Before this filter, numeric arguments in make() calls for slices and maps were mutated by incrementer/decrementer mutators, leading to false positives or invalid code:
 
-```bash
+```go
 // Original code
 slice := make([]int, 0)  // Capacity argument (0) was mutated
 
@@ -241,7 +239,7 @@ slice := make([]int, -1)   // Decrementer mutation
 These mutations are almost always irrelevant because:
 
 1. They don't affect logical correctness
-2. Capacity/length arguments are typically well-considered
+2. Capacity/length arguments are typically intentional
 3. Tests rarely validate exact allocation sizes
 
 The filter prevents mutations in make() arguments.
@@ -463,10 +461,10 @@ All mutation annotations only apply to the file where they are declared. There i
 
 ## <a name="write-mutation-exec-commands"></a>How do I write my own mutation exec commands?
 
-A mutation exec command is invoked for every mutation which is necessary to test a mutation. Commands should handle at least the following phases.
+A mutation exec command is invoked for each mutation. Commands should handle at least the following phases.
 
 1. **Setup** the source to include the mutation.
-2. **Test** the source by invoking the test suite and possible other test functionality.
+2. **Test** the source by invoking the test suite and possibly other test functionality.
 3. **Cleanup** all changes and remove all temporary assets.
 4. **Report** if the mutation was killed.
 
@@ -479,7 +477,7 @@ A set of environment variables, which define exactly one mutation, is passed on 
 | MUTATE_CHANGED  | Defines the filename to the mutation of the original file.                |
 | MUTATE_DEBUG    | Defines if debugging output should be printed.                            |
 | MUTATE_ORIGINAL | Defines the filename to the original file which was mutated.              |
-| MUTATE_PACKAGE  | Defines the import path of the origianl file.                             |
+| MUTATE_PACKAGE  | Defines the import path of the original file.                             |
 | MUTATE_TIMEOUT  | Defines a timeout which should be taken into account by the exec command. |
 | MUTATE_VERBOSE  | Defines if verbose output should be printed.                              |
 | TEST_RECURSIVE  | Defines if tests should be run recursively.                               |
@@ -608,10 +606,10 @@ Empties the `default` branch of a `select` statement.
 #### conditional/negated
 Name	                          | Original | Mutated  |
 | :------------------------------ | :------- | :------- |
-| GreaterThanNegotiation          | \>       | <=       |
-| LessThanNegotiation             | <        | \>=      |
-| GreaterThanOrEqualToNegotiation | \>=      | <        |
-| LessThanOrEqualToNegotiation    | <=       | \>       |
+| GreaterThanNegation          | \>       | <=       |
+| LessThanNegation             | <        | \>=      |
+| GreaterThanOrEqualToNegation | \>=      | <        |
+| LessThanOrEqualToNegation    | <=       | \>       |
 | Equal                           | ==       | !=       |
 | NotEqual                        | !=       | ==       |
 
@@ -678,16 +676,16 @@ Replaces each return value with the zero value for its type (`false` for bool, `
 
 There is a configuration file where you can fine-tune mutation testing.  
 The config must be written in YAML format.  
-If `--config` is presented, the library will use the given config. Otherwise, no default config file will be used.  
+If `--config` is provided, go-mutesting will use that file. Otherwise no config file is used.  
 The config contains the following parameters:  
 
 
 | Name                 | Default value | Description                                                                                                                                                        |
 |:---------------------| :------------ |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | skip_without_test    | true          | Skip files without _test.go tests.                                                                                                                                 |
-| skip_with_build_tags | true          | If in _test.go file we have --build tag - then skip it.                                                                                                            |
-| json_output          | false         | Make report.json file with a mutation test report.                                                                                                                 |
-| html_output          | false         | Make go-mutesting-report.html file with a mutation test report.                                                                                                    |
+| skip_with_build_tags | true          | Skip test files that contain build constraints.                                                                                                                    |
+| json_output          | false         | Writes a report.json file with the mutation test report.                                                                                                           |
+| html_output          | false         | Writes a go-mutesting-report.html file with the mutation test report.                                                                                              |
 | silent_mode          | false         | Do not print mutation stats.                                                                                                                                       |
 | min_msi              | 0             | Minimum required MSI (0–100). 0 means no gate.                                                                                                                    |
 | min_covered_msi      | 0             | Minimum required covered-code MSI (0–100). 0 means no gate.                                                                                                       |
@@ -705,14 +703,14 @@ Examples for mutators can be found in the [github.com/jonbaldie/go-mutesting/v2/
 
 ## <a name="other-projects"></a>Other mutation testing tools for Go
 
-The two most active alternatives are [gremlins](https://github.com/singerdmx/gremlins) and the upstream [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting) fork this project is based on.
+The two most active alternatives are [gremlins](https://github.com/singerdmx/gremlins) and the upstream [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting) fork that this project is based on.
 
 **gremlins** is well-maintained and simple to use. It has a clean CLI and a solid set of mutators. It does not have MSI quality gates, a baseline file, coverage-aware filtering, or a git-diff mode, so it works well for local exploration but is harder to wire into CI in a way that fails only on new regressions.
 
-**avito-tech/go-mutesting** is the direct upstream. This fork adds everything in the [feature table](#this-fork) at the top of this README.
+**avito-tech/go-mutesting** is the direct upstream. This fork adds everything in the [features table](#features) at the top of this README.
 
 If you want the smallest possible tool to run locally and see which mutants survive, gremlins is a reasonable choice. If you want to enforce mutation score thresholds in CI, track accepted escapes in a baseline, or pipe results to an LLM for test suggestions, this tool is the better fit.
 
 ## <a name="feature-request"></a>Can I make feature requests and report bugs and problems?
 
-Sure, just submit an [issue via the project tracker](https://github.com/jonbaldie/go-mutesting/issues/new) and we will see what I can do.
+Sure, just submit an [issue via the project tracker](https://github.com/jonbaldie/go-mutesting/issues/new) and I'll see what I can do.
