@@ -8,7 +8,7 @@ import (
 )
 
 func TestMutatorSelectDefaultRemoveRegistered(t *testing.T) {
-	if _, err := mutator.New("select/default_remove"); err != nil {
+	if _, err := mutator.New("select/default-remove"); err != nil {
 		t.Fatalf("mutator not registered: %v", err)
 	}
 }

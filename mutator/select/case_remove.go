@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	mutator.Register("select/case_remove", MutatorSelectCaseRemove)
+	mutator.Register("select/case-remove", MutatorSelectCaseRemove)
 }
 
 // MutatorSelectCaseRemove removes one non-default case at a time from a select statement.

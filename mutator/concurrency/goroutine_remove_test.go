@@ -8,7 +8,7 @@ import (
 )
 
 func TestMutatorGoroutineRemoveRegistered(t *testing.T) {
-	if _, err := mutator.New("concurrency/goroutine_remove"); err != nil {
+	if _, err := mutator.New("concurrency/goroutine-remove"); err != nil {
 		t.Fatalf("mutator not registered: %v", err)
 	}
 }

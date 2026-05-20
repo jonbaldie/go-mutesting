@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [v2.6.12] — 2026-05-20
+
+### Fixed
+- `concurrency/goroutine-remove`, `select/case-remove`, and `select/default-remove` were registered with underscores but documented with hyphens. `--disable concurrency/goroutine-remove` (as the docs instructed) silently did nothing. All three names now use hyphens consistently. **Breaking for anyone who referenced the old underscore names directly in `--disable` flags or `disable_mutators` config.**
+- `--run-mutant-id` no longer prints a misleading "mutation score is 0.00%" summary line when run in single-mutant debug mode.
+
+### Changed
+- CI example workflows in README and `docs/ci.md` updated from `actions/checkout@v4` / `actions/setup-go@v5` to `@v6`.
+- `docs/install.md` Go requirement updated from 1.25 to 1.26.
+- `docs/json-outputs.md`: `context_start_line` and `reminder` fields added to the agentic JSON schema table; MSI scale difference (0–1 in summary JSON vs 0–100 in agentic JSON) called out explicitly.
+- `docs/cli.md` and `docs/config.md`: added shell-quoting note for wildcard patterns (`--disable 'arithmetic/*'`).
+
+---
+
 ## [v2.6.11] — 2026-05-20
 
 ### Added
@@ -270,3 +284,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.6.7]: https://github.com/jonbaldie/go-mutesting/releases/tag/v2.6.7
 [v2.6.10]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.9...v2.6.10
 [v2.6.11]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.10...v2.6.11
+[v2.6.12]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.11...v2.6.12

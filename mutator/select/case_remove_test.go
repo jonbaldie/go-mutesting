@@ -8,7 +8,7 @@ import (
 )
 
 func TestMutatorSelectCaseRemoveRegistered(t *testing.T) {
-	if _, err := mutator.New("select/case_remove"); err != nil {
+	if _, err := mutator.New("select/case-remove"); err != nil {
 		t.Fatalf("mutator not registered: %v", err)
 	}
 }

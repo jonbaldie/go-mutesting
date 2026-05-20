@@ -15,8 +15,8 @@ jobs:
   mutating:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: stable
       - run: go build -o /tmp/go-mutesting ./cmd/go-mutesting
@@ -30,6 +30,8 @@ jobs:
 ```
 
 `--logger-github` emits escaped mutants as `::warning` annotations that appear inline on the PR diff.
+
+For high-assurance environments, pin actions to full commit SHAs instead of version tags and enable Dependabot to keep the pins current automatically.
 
 ## Adopting gates on a legacy codebase
 

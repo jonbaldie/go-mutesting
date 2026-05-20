@@ -595,7 +595,9 @@ MUTATOR:
 	}
 
 	if !opts.Exec.NoExec {
-		printSummary(report)
+		if opts.Exec.RunMutantID == "" {
+			printSummary(report)
+		}
 		if opts.Logger.GitHub {
 			printGitHubAnnotations(report)
 		}

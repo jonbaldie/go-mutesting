@@ -34,7 +34,7 @@ Writes `go-mutesting-summary.json`. Useful for CI badges, dashboards, and downst
 | `mutationCodeCoverage` | int | Lines covered by the coverage profile |
 | `coveredCodeMsi` | float | MSI restricted to covered lines only, range 0–1 |
 
-`msi` and `coveredCodeMsi` are in the 0–1 range (not 0–100).
+`msi` and `coveredCodeMsi` are in the **0–1 range** (not 0–100). Note that the agentic JSON report (`--logger-agentic-json`) uses the **0–100 percentage** scale for its `msi` field — both are correct within their respective formats, but scripts that consume both must account for the difference.
 
 ## `--logger-agentic-json`
 
@@ -45,6 +45,7 @@ Writes `go-mutesting-agentic.json`. A richer payload designed for LLM consumptio
   "generated_at": "2026-05-19T08:13:38Z",
   "msi": 58.57,
   "escaped_count": 5,
+  "reminder": "A mutant is an example of how this code could be wrong...",
   "mutants": [
     {
       "id": "abc123",
@@ -52,6 +53,7 @@ Writes `go-mutesting-agentic.json`. A richer payload designed for LLM consumptio
       "line": 42,
       "mutator": "branch/if",
       "diff": "--- Original\n+++ Mutated\n...",
+      "context_start_line": 39,
       "context_lines": ["func Foo() {", "  if x > 0 {", "  }"],
       "test_files": ["pkg/foo/foo_test.go"],
       "description": "Removes an if-block body so the condition becomes a no-op",
@@ -64,13 +66,15 @@ Writes `go-mutesting-agentic.json`. A richer payload designed for LLM consumptio
 | Field | Type | Description |
 | :---- | :--- | :---------- |
 | `generated_at` | string | RFC 3339 timestamp of the run |
-| `msi` | float | Overall MSI as a percentage (0–100) |
+| `msi` | float | Overall MSI as a **percentage (0–100)** — note this differs from the summary JSON, which uses a 0–1 ratio |
 | `escaped_count` | int | Number of survived mutants |
+| `reminder` | string | A plain-English reminder about how to interpret mutants — useful context when feeding the file to an LLM |
 | `mutants[].id` | string | Stable hash of file + mutator + diff — survives refactors that shift line numbers |
 | `mutants[].file` | string | Path to the mutated file, relative to the module root |
 | `mutants[].line` | int | Line number of the mutation |
 | `mutants[].mutator` | string | Mutator name (e.g. `branch/if`, `statement/return`) |
 | `mutants[].diff` | string | Unified diff of original vs mutated code |
+| `mutants[].context_start_line` | int | 1-based source line number of `context_lines[0]`; use this to anchor the context snippet without guessing offsets |
 | `mutants[].context_lines` | []string | Surrounding source lines for orientation |
 | `mutants[].test_files` | []string | Test files in the same package |
 | `mutants[].description` | string | Human-readable description of what the mutator changed |
