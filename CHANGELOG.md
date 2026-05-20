@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [Unreleased]
+
+### Added
+- `.github/dependabot.yml`: weekly grouped Dependabot PRs for Go modules and GitHub Actions.
+- `.github/workflows/security.yml`: `govulncheck` runs on push/PR and weekly Monday cron via `golang/govulncheck-action`; now fully enforcing (no `|| true`).
+
+### Changed
+- Upgraded module to `go 1.26.3`, clearing GO-2026-4980 and GO-2026-4982 (XSS in `html/template`).
+- Moved vulnerability scanning out of `mutation.yml` into dedicated `security.yml`.
+- Updated all GitHub Action pins from v4/v5 to current v6 SHAs.
+
+---
+
 ## [v2.6.10] — 2026-05-20
 
 ### Performance
