@@ -52,12 +52,21 @@ jobs:
           gofmt_fail = len(lines(f"gofmt -s -l {farg}"))
           gofmt = (n - gofmt_fail) / n
 
-          # go vet: per-package pass rate (weight 0.30)
-          vet_fail = sum(
-              1 for p in pkgs
-              if subprocess.run(f"go vet {p}", shell=True, capture_output=True).returncode != 0
-          )
-          vet = (np - vet_fail) / np
+          # go vet: per-file pass rate (weight 0.30)
+          # Run once on all packages (matches gometalinter --enable=vet ./...),
+          # then count files mentioned in output as failing.
+          vet_r = subprocess.run("go vet ./...", shell=True, capture_output=True, text=True)
+          if vet_r.returncode == 0:
+              vet = 1.0
+          else:
+              vet_fail_files = set()
+              for line in (vet_r.stdout + vet_r.stderr).splitlines():
+                  if not line or line.startswith("#"):
+                      continue
+                  fname = line.split(":")[0].lstrip("./")
+                  if fname.endswith(".go"):
+                      vet_fail_files.add(fname)
+              vet = (n - len(vet_fail_files)) / n
 
           # gocyclo --cyclo-over=15: per-file pass rate (weight 0.10)
           # raw output: "complexity pkg func path/to/file.go:line:col"
