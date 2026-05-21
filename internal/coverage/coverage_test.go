@@ -396,3 +396,70 @@ func TestCoveringTests_NoMatch(t *testing.T) {
 	assert.Nil(t, p.CoveringTests("/different/path/bar.go", 5))
 	assert.Nil(t, p.CoveringTests("/abs/pkg/foo.go", 99))
 }
+
+// TestBuildPerTestProfile_SingleTestPackage uses a package with exactly one test
+// function (mutator.TestMockMutator).  The len==0 guard mutant (line 194) would
+// return nil,nil for a 1-element slice; the i:=1 incrementer mutant (line 217)
+// would skip reading the only result and leave an empty profile.  Both are caught
+// by asserting the profile is non-nil and contains coverage data.
+func TestBuildPerTestProfile_SingleTestPackage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: runs per-test coverage profiling")
+	}
+	tmp := t.TempDir()
+	prof, err := BuildPerTestProfile(
+		"github.com/jonbaldie/go-mutesting/v2/mutator",
+		"github.com/jonbaldie/go-mutesting/v2",
+		tmp, 30, 1, nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, prof, "single-test package must produce a non-nil profile")
+	var found bool
+	for l := 1; l <= 100; l++ {
+		if len(prof.CoveringTests("/abs/mutator/mutator.go", l)) > 0 {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "profile must contain coverage data for mutator.go")
+}
+
+// TestBuildPerTestProfile_SortedCoverage verifies that CoveringTests always
+// returns test names in sorted order.  It checks two arithmetic source files
+// so that a range_break mutation on the outer loop (line 223, only sorts one
+// file) is caught as well as a break on the inner loop (line 224, only sorts
+// one line per file).
+func TestBuildPerTestProfile_SortedCoverage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: runs per-test coverage profiling")
+	}
+	tmp := t.TempDir()
+	prof, err := BuildPerTestProfile(
+		"github.com/jonbaldie/go-mutesting/v2/mutator/arithmetic",
+		"github.com/jonbaldie/go-mutesting/v2",
+		tmp, 30, 1, nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, prof)
+
+	files := []string{
+		"/abs/mutator/arithmetic/assignment.go",
+		"/abs/mutator/arithmetic/base.go",
+	}
+
+	multiCovered := 0
+	for _, file := range files {
+		for l := 1; l <= 150; l++ {
+			names := prof.CoveringTests(file, l)
+			if len(names) < 2 {
+				continue
+			}
+			multiCovered++
+			for i := 1; i < len(names); i++ {
+				assert.LessOrEqualf(t, names[i-1], names[i],
+					"test names must be sorted at %s:%d", file, l)
+			}
+		}
+	}
+	assert.Positive(t, multiCovered, "expected at least one line covered by multiple tests across two arithmetic source files")
+}
