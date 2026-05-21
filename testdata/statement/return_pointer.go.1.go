@@ -12,4 +12,4 @@ func makeSlice() []int {
 	return nil
 }
 
-func main() {}
+func main()	{}

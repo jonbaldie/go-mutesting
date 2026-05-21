@@ -9,4 +9,4 @@ func alreadyZero() Empty {
 	return Empty{}
 }
 
-func main() {}
+func main()	{}

@@ -3,7 +3,7 @@
 
 package main
 
-func cleanup() {}
+func cleanup()	{}
 
 func process(ch chan struct{}) {
 	select {
@@ -12,4 +12,4 @@ func process(ch chan struct{}) {
 	}
 }
 
-func main() {}
+func main()	{}

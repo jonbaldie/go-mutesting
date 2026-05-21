@@ -3,7 +3,7 @@
 
 package main
 
-func configure(debug bool) {}
+func configure(debug bool)	{}
 
 func main() {
 	enabled := false

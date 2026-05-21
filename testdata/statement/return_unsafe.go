@@ -10,4 +10,4 @@ func makeUnsafe() unsafe.Pointer {
 	return unsafe.Pointer(&x)
 }
 
-func main() {}
+func main()	{}
