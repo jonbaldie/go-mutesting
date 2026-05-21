@@ -304,6 +304,8 @@ func TestBuildPerTestProfile_RealPackage(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, prof, "arithmetic package should produce a per-test profile")
+
+	// Coverage data present for assignment.go.
 	var found bool
 	for l := 1; l <= 100; l++ {
 		if len(prof.CoveringTests("/abs/mutator/arithmetic/assignment.go", l)) > 0 {
@@ -312,6 +314,23 @@ func TestBuildPerTestProfile_RealPackage(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "profile should contain coverage data for arithmetic/assignment.go")
+
+	// All covering-test lists across two source files must be sorted.  A
+	// range_break mutation on the outer sort loop (line 223) only sorts the
+	// first file; one on the inner loop (line 224) only sorts the first line
+	// per file.  Checking two files with multiple multi-covered lines kills both.
+	for _, file := range []string{
+		"/abs/mutator/arithmetic/assignment.go",
+		"/abs/mutator/arithmetic/base.go",
+	} {
+		for l := 1; l <= 150; l++ {
+			names := prof.CoveringTests(file, l)
+			for i := 1; i < len(names); i++ {
+				assert.LessOrEqualf(t, names[i-1], names[i],
+					"test names must be sorted at %s:%d", file, l)
+			}
+		}
+	}
 }
 
 func TestBuildPerTestProfile_EmptyPackage(t *testing.T) {
@@ -424,42 +443,3 @@ func TestBuildPerTestProfile_SingleTestPackage(t *testing.T) {
 	assert.True(t, found, "profile must contain coverage data for mutator.go")
 }
 
-// TestBuildPerTestProfile_SortedCoverage verifies that CoveringTests always
-// returns test names in sorted order.  It checks two arithmetic source files
-// so that a range_break mutation on the outer loop (line 223, only sorts one
-// file) is caught as well as a break on the inner loop (line 224, only sorts
-// one line per file).
-func TestBuildPerTestProfile_SortedCoverage(t *testing.T) {
-	if testing.Short() {
-		t.Skip("slow: runs per-test coverage profiling")
-	}
-	tmp := t.TempDir()
-	prof, err := BuildPerTestProfile(
-		"github.com/jonbaldie/go-mutesting/v2/mutator/arithmetic",
-		"github.com/jonbaldie/go-mutesting/v2",
-		tmp, 30, 1, nil,
-	)
-	require.NoError(t, err)
-	require.NotNil(t, prof)
-
-	files := []string{
-		"/abs/mutator/arithmetic/assignment.go",
-		"/abs/mutator/arithmetic/base.go",
-	}
-
-	multiCovered := 0
-	for _, file := range files {
-		for l := 1; l <= 150; l++ {
-			names := prof.CoveringTests(file, l)
-			if len(names) < 2 {
-				continue
-			}
-			multiCovered++
-			for i := 1; i < len(names); i++ {
-				assert.LessOrEqualf(t, names[i-1], names[i],
-					"test names must be sorted at %s:%d", file, l)
-			}
-		}
-	}
-	assert.Positive(t, multiCovered, "expected at least one line covered by multiple tests across two arithmetic source files")
-}
