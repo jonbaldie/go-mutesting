@@ -329,16 +329,16 @@ func findTestFiles(dir, moduleRoot string) []string {
 
 // gitLabIssue is one entry in the GitLab Code Quality JSON array.
 type gitLabIssue struct {
-	Type        string          `json:"type"`
-	Description string          `json:"description"`
-	Severity    string          `json:"severity"`
-	Fingerprint string          `json:"fingerprint"`
-	Location    gitLabLocation  `json:"location"`
+	Type        string         `json:"type"`
+	Description string         `json:"description"`
+	Severity    string         `json:"severity"`
+	Fingerprint string         `json:"fingerprint"`
+	Location    gitLabLocation `json:"location"`
 }
 
 type gitLabLocation struct {
-	Path  string        `json:"path"`
-	Lines gitLabLines   `json:"lines"`
+	Path  string      `json:"path"`
+	Lines gitLabLines `json:"lines"`
 }
 
 type gitLabLines struct {

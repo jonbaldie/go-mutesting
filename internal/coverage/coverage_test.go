@@ -304,6 +304,8 @@ func TestBuildPerTestProfile_RealPackage(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, prof, "arithmetic package should produce a per-test profile")
+
+	// Coverage data present for assignment.go.
 	var found bool
 	for l := 1; l <= 100; l++ {
 		if len(prof.CoveringTests("/abs/mutator/arithmetic/assignment.go", l)) > 0 {
@@ -312,6 +314,23 @@ func TestBuildPerTestProfile_RealPackage(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "profile should contain coverage data for arithmetic/assignment.go")
+
+	// All covering-test lists across two source files must be sorted.  A
+	// range_break mutation on the outer sort loop (line 223) only sorts the
+	// first file; one on the inner loop (line 224) only sorts the first line
+	// per file.  Checking two files with multiple multi-covered lines kills both.
+	for _, file := range []string{
+		"/abs/mutator/arithmetic/assignment.go",
+		"/abs/mutator/arithmetic/base.go",
+	} {
+		for l := 1; l <= 150; l++ {
+			names := prof.CoveringTests(file, l)
+			for i := 1; i < len(names); i++ {
+				assert.LessOrEqualf(t, names[i-1], names[i],
+					"test names must be sorted at %s:%d", file, l)
+			}
+		}
+	}
 }
 
 func TestBuildPerTestProfile_EmptyPackage(t *testing.T) {
@@ -396,3 +415,31 @@ func TestCoveringTests_NoMatch(t *testing.T) {
 	assert.Nil(t, p.CoveringTests("/different/path/bar.go", 5))
 	assert.Nil(t, p.CoveringTests("/abs/pkg/foo.go", 99))
 }
+
+// TestBuildPerTestProfile_SingleTestPackage uses a package with exactly one test
+// function (mutator.TestMockMutator).  The len==0 guard mutant (line 194) would
+// return nil,nil for a 1-element slice; the i:=1 incrementer mutant (line 217)
+// would skip reading the only result and leave an empty profile.  Both are caught
+// by asserting the profile is non-nil and contains coverage data.
+func TestBuildPerTestProfile_SingleTestPackage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: runs per-test coverage profiling")
+	}
+	tmp := t.TempDir()
+	prof, err := BuildPerTestProfile(
+		"github.com/jonbaldie/go-mutesting/v2/mutator",
+		"github.com/jonbaldie/go-mutesting/v2",
+		tmp, 30, 1, nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, prof, "single-test package must produce a non-nil profile")
+	var found bool
+	for l := 1; l <= 100; l++ {
+		if len(prof.CoveringTests("/abs/mutator/mutator.go", l)) > 0 {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "profile must contain coverage data for mutator.go")
+}
+

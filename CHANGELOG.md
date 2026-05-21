@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [v2.6.13] — 2026-05-21
+
+### Added
+- `.github/workflows/goreportcard.yml`: CI gate that enforces A+ grade (>90%) using goreportcard's exact weights from source — gofmt (0.30), go vet (0.30), gocyclo (0.10), license (0.05), ineffassign (0.10).
+- Two `BuildPerTestProfile` tests targeting previously escaped mutants; covered-code MSI on `internal/coverage` rises from 81.76% to 89.19%.
+
+### Fixed
+- Typo: `duting` → `during` in `internal/annotation/regex.go`.
+
+### Changed
+- All functions brought to cyclomatic complexity ≤15: helpers extracted in `cmd/go-mutesting/main.go`, `internal/coverage`, `internal/importing`, and `mutator/statement`.
+- `gofmt -s` applied to all source and testdata files.
+
+[v2.6.13]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.12...v2.6.13
+
+---
+
 ## [v2.6.12] — 2026-05-20
 
 ### Fixed

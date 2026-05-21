@@ -33,13 +33,13 @@ type Options struct {
 	} `group:"Filter options"`
 
 	Exec struct {
-		Exec        string `long:"exec" description:"Execute this command for every mutation (by default the built-in exec command is used)"`
-		NoExec      bool   `long:"no-exec" description:"Skip the built-in exec command and just generate the mutations"`
-		Timeout     uint   `long:"exec-timeout" description:"Sets a timeout for the command execution (in seconds)" default:"10"`
-		RunMutantID string `long:"run-mutant-id" description:"Run only the mutant with this stable ID. Copy the id field from go-mutesting-agentic.json to target a specific survivor. Quality gates and the summary line are suppressed in this mode."`
-		Coverage          bool    `long:"coverage" description:"Run go test -coverprofile before mutating to compute covered-code MSI and mark uncovered mutants"`
-		PerTest           bool    `long:"per-test" description:"Build a per-test coverage map and run only covering tests for each mutation. Fastest on packages with slow tests; pairs well with --coverage."`
-		TestFlags         string  `long:"test-flags" description:"Extra flags passed to each 'go test' invocation. Use the = form to pass flag values: --test-flags='-short'. Ignored when --exec is set."`
+		Exec               string  `long:"exec" description:"Execute this command for every mutation (by default the built-in exec command is used)"`
+		NoExec             bool    `long:"no-exec" description:"Skip the built-in exec command and just generate the mutations"`
+		Timeout            uint    `long:"exec-timeout" description:"Sets a timeout for the command execution (in seconds)" default:"10"`
+		RunMutantID        string  `long:"run-mutant-id" description:"Run only the mutant with this stable ID. Copy the id field from go-mutesting-agentic.json to target a specific survivor. Quality gates and the summary line are suppressed in this mode."`
+		Coverage           bool    `long:"coverage" description:"Run go test -coverprofile before mutating to compute covered-code MSI and mark uncovered mutants"`
+		PerTest            bool    `long:"per-test" description:"Build a per-test coverage map and run only covering tests for each mutation. Fastest on packages with slow tests; pairs well with --coverage."`
+		TestFlags          string  `long:"test-flags" description:"Extra flags passed to each 'go test' invocation. Use the = form to pass flag values: --test-flags='-short'. Ignored when --exec is set."`
 		TimeoutCoefficient float64 `long:"timeout-coefficient" description:"Set per-mutation timeout as a multiple of the baseline test-suite run time (e.g. 3 = 3× the clean run). Overrides --exec-timeout when > 0." default:"0"`
 	} `group:"Exec options"`
 
@@ -72,10 +72,10 @@ type Options struct {
 	// -1 is the "not set" sentinel so that --min-msi 0 is distinguishable from
 	// "flag not provided", and CLI always takes precedence over config file.
 	Score struct {
-		MinMsi                  float64 `long:"min-msi" description:"Minimum required MSI (0-100). Exit code 4 when not met." default:"-1"`
-		MinCoveredMsi           float64 `long:"min-covered-msi" description:"Minimum required covered-MSI (0-100). Exit code 4 when not met." default:"-1"`
-		IgnoreMsiWithNoMutations bool   `long:"ignore-msi-with-no-mutations" description:"Exit 0 even when MSI thresholds are not met if no mutations were generated (useful with --git-diff-lines)"`
-		FailOnEscaped           bool    `long:"fail-on-escaped" description:"Exit code 4 if any mutant escapes, without requiring --min-msi"`
+		MinMsi                   float64 `long:"min-msi" description:"Minimum required MSI (0-100). Exit code 4 when not met." default:"-1"`
+		MinCoveredMsi            float64 `long:"min-covered-msi" description:"Minimum required covered-MSI (0-100). Exit code 4 when not met." default:"-1"`
+		IgnoreMsiWithNoMutations bool    `long:"ignore-msi-with-no-mutations" description:"Exit 0 even when MSI thresholds are not met if no mutations were generated (useful with --git-diff-lines)"`
+		FailOnEscaped            bool    `long:"fail-on-escaped" description:"Exit code 4 if any mutant escapes, without requiring --min-msi"`
 	} `group:"Score options"`
 
 	Remaining struct {

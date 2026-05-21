@@ -63,20 +63,36 @@ func stmtExprEqual(a, b ast.Expr) bool {
 		y, ok := b.(*ast.BasicLit)
 		return ok && x.Kind == y.Kind && x.Value == y.Value
 	case *ast.BinaryExpr:
-		y, ok := b.(*ast.BinaryExpr)
-		return ok && x.Op == y.Op && stmtExprEqual(x.X, y.X) && stmtExprEqual(x.Y, y.Y)
+		return binaryExprEqual(x, b)
 	case *ast.UnaryExpr:
-		y, ok := b.(*ast.UnaryExpr)
-		return ok && x.Op == y.Op && stmtExprEqual(x.X, y.X)
+		return unaryExprEqual(x, b)
 	case *ast.SelectorExpr:
-		y, ok := b.(*ast.SelectorExpr)
-		return ok && stmtExprEqual(x.X, y.X) && x.Sel.Name == y.Sel.Name
+		return selectorExprEqual(x, b)
 	case *ast.IndexExpr:
-		y, ok := b.(*ast.IndexExpr)
-		return ok && stmtExprEqual(x.X, y.X) && stmtExprEqual(x.Index, y.Index)
+		return indexExprEqual(x, b)
 	case *ast.StarExpr:
 		y, ok := b.(*ast.StarExpr)
 		return ok && stmtExprEqual(x.X, y.X)
 	}
 	return false
+}
+
+func binaryExprEqual(x *ast.BinaryExpr, b ast.Expr) bool {
+	y, ok := b.(*ast.BinaryExpr)
+	return ok && x.Op == y.Op && stmtExprEqual(x.X, y.X) && stmtExprEqual(x.Y, y.Y)
+}
+
+func unaryExprEqual(x *ast.UnaryExpr, b ast.Expr) bool {
+	y, ok := b.(*ast.UnaryExpr)
+	return ok && x.Op == y.Op && stmtExprEqual(x.X, y.X)
+}
+
+func selectorExprEqual(x *ast.SelectorExpr, b ast.Expr) bool {
+	y, ok := b.(*ast.SelectorExpr)
+	return ok && stmtExprEqual(x.X, y.X) && x.Sel.Name == y.Sel.Name
+}
+
+func indexExprEqual(x *ast.IndexExpr, b ast.Expr) bool {
+	y, ok := b.(*ast.IndexExpr)
+	return ok && stmtExprEqual(x.X, y.X) && stmtExprEqual(x.Index, y.Index)
 }

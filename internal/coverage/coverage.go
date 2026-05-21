@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // Profile holds which source lines are covered by tests.
@@ -167,6 +166,17 @@ func CountTests(pkgPath string) int {
 // timeout is the per-test run timeout in seconds (same value as --exec-timeout).
 // extraTestFlags are appended before the explicit -run flag so that -short, -race,
 // etc. are consistent between profile-building and actual mutation test runs.
+// perTestJob is a work item for a per-test profiling worker.
+type perTestJob struct {
+	name string
+}
+
+// perTestResult carries the coverage profile produced by one worker.
+type perTestResult struct {
+	name string
+	prof *Profile
+}
+
 func BuildPerTestProfile(pkgPath, modulePath, tmpDir string, timeout uint, workers int, extraTestFlags []string) (*PerTestProfile, error) {
 	// List test functions (not subtests).
 	listOut, err := exec.Command("go", "test", "-list", ".*", pkgPath).Output()
@@ -189,72 +199,23 @@ func BuildPerTestProfile(pkgPath, modulePath, tmpDir string, timeout uint, worke
 		workers = 1
 	}
 
-	type entry struct {
-		name    string
-		profDir string
-	}
-
-	type result struct {
-		name string
-		prof *Profile
-	}
-
-	jobs := make(chan entry, len(testNames))
-	results := make(chan result, len(testNames))
+	jobs := make(chan perTestJob, len(testNames))
+	results := make(chan perTestResult, len(testNames))
 
 	for i := 0; i < workers; i++ {
-		go func() {
-			for job := range jobs {
-				profDir := filepath.Join(tmpDir, "per-test", job.name)
-				_ = os.MkdirAll(profDir, 0755)
-				profPath := filepath.Join(profDir, "coverage.out")
-
-				args := []string{"test"}
-				args = append(args, extraTestFlags...)
-				args = append(args,
-					"-run", "^"+job.name+"$",
-					"-coverprofile="+profPath,
-					"-covermode=set",
-					"-timeout", fmt.Sprintf("%ds", timeout),
-					pkgPath)
-				cmd := exec.Command("go", args...)
-				cmd.Env = os.Environ()
-				_ = cmd.Run() // test failures are expected; we only care about coverage
-
-				prof, err := ParseProfile(profPath, modulePath)
-				if err != nil {
-					results <- result{name: job.name, prof: nil}
-					continue
-				}
-				results <- result{name: job.name, prof: prof}
-			}
-		}()
+		go runPerTestWorker(jobs, results, pkgPath, modulePath, tmpDir, timeout, extraTestFlags)
 	}
 
 	for _, name := range testNames {
-		jobs <- entry{name: name}
+		jobs <- perTestJob{name: name}
 	}
 	close(jobs)
 
 	// Merge per-test profiles into a single PerTestProfile.
 	p := &PerTestProfile{data: make(map[string]map[int][]string)}
-	var mu sync.Mutex
 
 	for i := 0; i < len(testNames); i++ {
-		r := <-results
-		if r.prof == nil {
-			continue
-		}
-		mu.Lock()
-		for relPath, lines := range r.prof.coveredLines {
-			if p.data[relPath] == nil {
-				p.data[relPath] = make(map[int][]string)
-			}
-			for line := range lines {
-				p.data[relPath][line] = append(p.data[relPath][line], r.name)
-			}
-		}
-		mu.Unlock()
+		applyPerTestResult(p, <-results)
 	}
 
 	// Sort test lists for deterministic -run patterns.
@@ -265,4 +226,45 @@ func BuildPerTestProfile(pkgPath, modulePath, tmpDir string, timeout uint, worke
 	}
 
 	return p, nil
+}
+
+func runPerTestWorker(jobs <-chan perTestJob, results chan<- perTestResult, pkgPath, modulePath, tmpDir string, timeout uint, extraTestFlags []string) {
+	for job := range jobs {
+		profDir := filepath.Join(tmpDir, "per-test", job.name)
+		_ = os.MkdirAll(profDir, 0755)
+		profPath := filepath.Join(profDir, "coverage.out")
+
+		args := []string{"test"}
+		args = append(args, extraTestFlags...)
+		args = append(args,
+			"-run", "^"+job.name+"$",
+			"-coverprofile="+profPath,
+			"-covermode=set",
+			"-timeout", fmt.Sprintf("%ds", timeout),
+			pkgPath)
+		cmd := exec.Command("go", args...)
+		cmd.Env = os.Environ()
+		_ = cmd.Run() // test failures are expected; we only care about coverage
+
+		prof, err := ParseProfile(profPath, modulePath)
+		if err != nil {
+			results <- perTestResult{name: job.name, prof: nil}
+			continue
+		}
+		results <- perTestResult{name: job.name, prof: prof}
+	}
+}
+
+func applyPerTestResult(p *PerTestProfile, r perTestResult) {
+	if r.prof == nil {
+		return
+	}
+	for relPath, lines := range r.prof.coveredLines {
+		if p.data[relPath] == nil {
+			p.data[relPath] = make(map[int][]string)
+		}
+		for line := range lines {
+			p.data[relPath][line] = append(p.data[relPath][line], r.name)
+		}
+	}
 }

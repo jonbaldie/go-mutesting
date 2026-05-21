@@ -150,12 +150,27 @@ func matchPackages(pattern string) []string {
 		"builtin": true, // ignore pseudo-package that exists only for documentation
 	}
 	if !buildContext.CgoEnabled {
-		have["runtime/cgo"] = true // ignore during walk
+		have["runtime/cgo"] = true
 	}
-	var pkgs []string
 
-	// Commands
 	cmd := filepath.Join(goroot, "src/cmd") + string(filepath.Separator)
+	cmdPkgs, err := walkCmdPackages(cmd, treeCanMatch, match, have)
+	if err != nil {
+		log.Print(err)
+		return nil
+	}
+
+	srcPkgs, err := walkSrcPackages(pattern, treeCanMatch, match, have)
+	if err != nil {
+		log.Print(err)
+		return nil
+	}
+
+	return append(cmdPkgs, srcPkgs...)
+}
+
+func walkCmdPackages(cmd string, treeCanMatch, match func(string) bool, have map[string]bool) ([]string, error) {
+	var pkgs []string
 	err := filepath.Walk(cmd, func(path string, fi os.FileInfo, err error) error {
 		if err != nil || !fi.IsDir() || path == cmd {
 			return nil
@@ -164,12 +179,9 @@ func matchPackages(pattern string) []string {
 		if !treeCanMatch(name) {
 			return filepath.SkipDir
 		}
-		// Commands are all in cmd/, not in subdirectories.
 		if strings.Contains(name, string(filepath.Separator)) {
 			return filepath.SkipDir
 		}
-
-		// We use, e.g., cmd/gofmt as the pseudo import path for gofmt.
 		name = "cmd/" + name
 		if have[name] {
 			return nil
@@ -178,8 +190,7 @@ func matchPackages(pattern string) []string {
 		if !match(name) {
 			return nil
 		}
-		_, err = buildContext.ImportDir(path, 0)
-		if err != nil {
+		if _, err = buildContext.ImportDir(path, 0); err != nil {
 			if _, noGo := err.(*build.NoGoError); !noGo {
 				log.Print(err)
 			}
@@ -188,58 +199,63 @@ func matchPackages(pattern string) []string {
 		pkgs = append(pkgs, name)
 		return nil
 	})
-	if err != nil {
-		log.Print(err)
+	return pkgs, err
+}
 
-		return nil
-	}
-
+func walkSrcPackages(pattern string, treeCanMatch, match func(string) bool, have map[string]bool) ([]string, error) {
+	var pkgs []string
 	for _, src := range buildContext.SrcDirs() {
 		if pattern == "std" && src != gorootSrcPkg {
 			continue
 		}
 		src = filepath.Clean(src) + string(filepath.Separator)
-		err := filepath.Walk(src, func(path string, fi os.FileInfo, err error) error {
-			if err != nil || !fi.IsDir() || path == src {
-				return nil
-			}
-
-			// Avoid .foo, _foo, and testdata directory trees.
-			_, elem := filepath.Split(path)
-			if strings.HasPrefix(elem, ".") || strings.HasPrefix(elem, "_") || elem == "testdata" {
-				return filepath.SkipDir
-			}
-
-			name := filepath.ToSlash(path[len(src):])
-			if pattern == "std" && strings.Contains(name, ".") {
-				return filepath.SkipDir
-			}
-			if !treeCanMatch(name) {
-				return filepath.SkipDir
-			}
-			if have[name] {
-				return nil
-			}
-			have[name] = true
-			if !match(name) {
-				return nil
-			}
-			_, err = buildContext.ImportDir(path, 0)
-			if err != nil {
-				if _, noGo := err.(*build.NoGoError); noGo { //nolint:gosimple
-					return nil
-				}
-			}
-			pkgs = append(pkgs, name)
-			return nil
-		})
+		newPkgs, err := walkSrcDir(src, pattern, treeCanMatch, match, have)
 		if err != nil {
-			log.Print(err)
+			return nil, err
+		}
+		pkgs = append(pkgs, newPkgs...)
+	}
+	return pkgs, nil
+}
 
+func walkSrcDir(src, pattern string, treeCanMatch, match func(string) bool, have map[string]bool) ([]string, error) {
+	var pkgs []string
+	err := filepath.Walk(src, func(path string, fi os.FileInfo, err error) error {
+		if err != nil || !fi.IsDir() || path == src {
 			return nil
 		}
-	}
-	return pkgs
+		_, elem := filepath.Split(path)
+		if isSkippableDir(elem) {
+			return filepath.SkipDir
+		}
+		name := filepath.ToSlash(path[len(src):])
+		if pattern == "std" && strings.Contains(name, ".") {
+			return filepath.SkipDir
+		}
+		if !treeCanMatch(name) {
+			return filepath.SkipDir
+		}
+		if have[name] {
+			return nil
+		}
+		have[name] = true
+		if !match(name) {
+			return nil
+		}
+		if _, err = buildContext.ImportDir(path, 0); err != nil {
+			if _, noGo := err.(*build.NoGoError); !noGo {
+				log.Print(err)
+			}
+			return nil
+		}
+		pkgs = append(pkgs, name)
+		return nil
+	})
+	return pkgs, err
+}
+
+func isSkippableDir(elem string) bool {
+	return strings.HasPrefix(elem, ".") || strings.HasPrefix(elem, "_") || elem == "testdata"
 }
 
 // allPackagesInFS is like allPackages but is passed a pattern

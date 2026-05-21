@@ -88,7 +88,7 @@ func (r *RegexAnnotation) findLinesMatchingRegex(filePath string, regex *regexp.
 	defer func() {
 		err = f.Close()
 		if err != nil {
-			log.Printf("Error while file closing duting processing regex annotation: %v", err.Error())
+			log.Printf("Error while file closing during processing regex annotation: %v", err.Error())
 		}
 	}()
 
