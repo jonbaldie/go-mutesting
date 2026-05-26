@@ -203,7 +203,7 @@ func mainCmd(args []string) int {
 
 	tmpDir, err := os.MkdirTemp("", "go-mutesting-")
 	if err != nil {
-		panic(err)
+		return exitError("Cannot create temp directory: %v", err)
 	}
 	console.Verbose(opts, "Save mutations into %q", tmpDir)
 
@@ -622,13 +622,13 @@ func processMutationFile(
 	}
 
 	if err = os.MkdirAll(tmpDir+"/"+filepath.Dir(file), 0755); err != nil {
-		panic(err)
+		return 0, exitError("Cannot create mutation directory: %v", err)
 	}
 
 	tmpFile := tmpDir + "/" + file
 	originalFile := fmt.Sprintf("%s.original", tmpFile)
 	if err = osutil.CopyFile(file, originalFile); err != nil {
-		panic(err)
+		return 0, exitError("Cannot copy original file: %v", err)
 	}
 	console.Debug(opts, "Save original into %q", originalFile)
 
@@ -663,9 +663,10 @@ func shutdownAndCleanup(opts *models.Options, jobs chan execJob, jobWg *sync.Wai
 	}
 	if !opts.General.DoNotRemoveTmpFolder {
 		if err := os.RemoveAll(tmpDir); err != nil {
-			panic(err)
+			fmt.Fprintf(os.Stderr, "go-mutesting: cannot remove %s: %v\n", tmpDir, err)
+		} else {
+			console.Debug(opts, "Remove %q", tmpDir)
 		}
-		console.Debug(opts, "Remove %q", tmpDir)
 	}
 }
 
@@ -683,6 +684,8 @@ func printDryRunReport(total int, totals map[string]int) {
 		}
 	}
 	fmt.Printf("\nTotal: %d mutation(s) would be generated. No files written, no tests run.\n", total)
+	fmt.Println("Note: this count is an upper bound. Identical mutations across files are deduplicated during an actual run.")
+
 }
 
 // handleBaselineUpdate writes the current escaped mutants to the baseline file.
@@ -816,9 +819,6 @@ func checkQualityGates(opts *models.Options, report *models.Report, bl *baseline
 		return returnOk
 	}
 
-	msiPct := report.Stats.Msi * 100
-	covMsiPct := report.Stats.CoveredCodeMsi * 100
-
 	// CLI flag is -1 when not provided; config file defaults to 0 when not set.
 	// CLI always wins when explicitly set (>= 0); fall back to config otherwise.
 	minMsi := opts.Score.MinMsi
@@ -843,6 +843,8 @@ func checkQualityGates(opts *models.Options, report *models.Report, bl *baseline
 			failed = true
 		}
 	}
+	msiPct := report.Stats.Msi * 100
+	covMsiPct := report.Stats.CoveredCodeMsi * 100
 	if minMsi >= 0 && msiPct < minMsi {
 		fmt.Fprintf(os.Stderr, "MSI %.2f%% is below minimum required %.2f%%\n", msiPct, minMsi)
 		failed = true
@@ -1082,6 +1084,9 @@ func recordMutantResult(opts *models.Options, stats *models.Report, mutant model
 		if statusVisible(opts, 'k') {
 			console.PrintPass(out)
 		}
+		if opts.General.Debug && !opts.General.NoDiffs && mutant.Diff != "" {
+			console.PrintDiff([]byte(mutant.Diff))
+		}
 		mutant.ProcessOutput = out
 		stats.Killed = append(stats.Killed, mutant)
 		stats.Stats.KilledCount++
@@ -1089,6 +1094,9 @@ func recordMutantResult(opts *models.Options, stats *models.Report, mutant model
 		out := fmt.Sprintf("FAIL %s\n", msg)
 		if statusVisible(opts, 'e') {
 			console.PrintFail(out)
+		}
+		if !opts.General.NoDiffs && statusVisible(opts, 'e') && mutant.Diff != "" {
+			console.PrintDiff([]byte(mutant.Diff))
 		}
 		mutant.ProcessOutput = out
 		stats.Escaped = append(stats.Escaped, mutant)
@@ -1098,12 +1106,22 @@ func recordMutantResult(opts *models.Options, stats *models.Report, mutant model
 		if statusVisible(opts, 's') {
 			console.PrintSkip(out)
 		}
+		if opts.General.Verbose {
+			fmt.Println("Mutation did not compile")
+		}
+		if opts.General.Debug && !opts.General.NoDiffs && mutant.Diff != "" {
+			console.PrintDiff([]byte(mutant.Diff))
+		}
 		mutant.ProcessOutput = out
+		stats.Skipped = append(stats.Skipped, mutant)
 		stats.Stats.SkippedCount++
 	default:
 		out := fmt.Sprintf("UNKNOWN exit code for %s\n", msg)
 		if statusVisible(opts, 'x') {
 			console.PrintUnknown(out)
+			if !opts.General.NoDiffs && mutant.Diff != "" {
+				console.PrintDiff([]byte(mutant.Diff))
+			}
 		}
 		mutant.ProcessOutput = out
 		stats.Errored = append(stats.Errored, mutant)
@@ -1151,11 +1169,12 @@ func runBuiltinExec(
 	} else if e, ok := err.(*exec.ExitError); ok {
 		diffExitCode = e.Sys().(syscall.WaitStatus).ExitStatus()
 	} else {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "go-mutesting: diff error: %v\n", err)
+		return 3
 	}
 	if diffExitCode != 0 && diffExitCode != 1 {
-		fmt.Printf("%s\n", diff)
-		panic("Could not execute diff on mutation file")
+		fmt.Fprintf(os.Stderr, "go-mutesting: diff exited with code %d\n", diffExitCode)
+		return 3
 	}
 
 	absOrig, _ := filepath.Abs(file)
@@ -1166,12 +1185,14 @@ func runBuiltinExec(
 
 	overlayFile, err := os.CreateTemp("", "go-mutesting-overlay-*.json")
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "go-mutesting: cannot create overlay file: %v\n", err)
+		return 3
 	}
 	if _, err := overlayFile.Write(overlayData); err != nil {
 		overlayFile.Close()
 		os.Remove(overlayFile.Name())
-		panic(err)
+		fmt.Fprintf(os.Stderr, "go-mutesting: cannot write overlay file: %v\n", err)
+		return 3
 	}
 	overlayFile.Close()
 	defer os.Remove(overlayFile.Name())
@@ -1205,7 +1226,8 @@ func runBuiltinExec(
 	} else if e, ok := err.(*exec.ExitError); ok {
 		execExitCode = e.Sys().(syscall.WaitStatus).ExitStatus()
 	} else {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "go-mutesting: go test error: %v\n", err)
+		return 3
 	}
 
 	if opts.General.Debug {
@@ -1213,37 +1235,12 @@ func runBuiltinExec(
 	}
 
 	mutant.Diff = string(diff)
-	return interpretBuiltinExitCode(opts, execExitCode, diff)
-}
-
-// interpretBuiltinExitCode maps the go test exit code to a mutation result code
-// and prints diff output when appropriate.
-func interpretBuiltinExitCode(opts *models.Options, execExitCode int, diff []byte) int {
-	switch execExitCode {
-	case 0: // Tests passed → mutation escaped
-		if !opts.General.NoDiffs && statusVisible(opts, 'e') {
-			console.PrintDiff(diff)
-		}
+	// Map go test exit codes: 0 (tests passed) means the mutation escaped; 1 (tests failed) means killed.
+	if execExitCode == 0 {
 		return 1
-	case 1: // Tests failed → mutation killed
-		if opts.General.Debug && !opts.General.NoDiffs {
-			console.PrintDiff(diff)
-		}
+	}
+	if execExitCode == 1 {
 		return 0
-	case 2: // Did not compile → skip
-		if opts.General.Verbose {
-			fmt.Println("Mutation did not compile")
-		}
-		if opts.General.Debug && !opts.General.NoDiffs {
-			console.PrintDiff(diff)
-		}
-	default:
-		if statusVisible(opts, 'x') {
-			fmt.Println("Unknown exit code")
-			if !opts.General.NoDiffs {
-				console.PrintDiff(diff)
-			}
-		}
 	}
 	return execExitCode
 }
@@ -1272,7 +1269,8 @@ func runCustomExec(opts *models.Options, pkg *types.Package, file string, mutati
 	}
 
 	if err := execCommand.Start(); err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "go-mutesting: cannot start %q: %v\n", execs[0], err)
+		return 3
 	}
 	err := execCommand.Wait()
 
@@ -1282,7 +1280,8 @@ func runCustomExec(opts *models.Options, pkg *types.Package, file string, mutati
 	} else if e, ok := err.(*exec.ExitError); ok {
 		execExitCode = e.Sys().(syscall.WaitStatus).ExitStatus()
 	} else {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "go-mutesting: exec wait error: %v\n", err)
+		return 3
 	}
 	return execExitCode
 }

@@ -128,7 +128,7 @@ Every mutation has to be tested using an [exec command](#write-mutation-exec-com
 Alternatively the `--exec` argument can be used to invoke an external exec command. The [/scripts/exec](/scripts/exec) directory holds basic exec commands for Go projects. The [test-mutated-package.sh](/scripts/exec/test-mutated-package.sh) script implements all steps and almost all features of the built-in exec command. It can be for example used to test the [github.com/jonbaldie/go-mutesting/v2/example](/example) package.
 
 ```bash
-go-mutesting --exec "$GOPATH/src/github.com/jonbaldie/go-mutesting/v2/scripts/exec/test-mutated-package.sh" github.com/jonbaldie/go-mutesting/v2/example
+go-mutesting --exec "$GOPATH/src/github.com/jonbaldie/go-mutesting/scripts/exec/test-mutated-package.sh" github.com/jonbaldie/go-mutesting/v2/example
 ```
 
 The execution will print the following output.
@@ -177,7 +177,7 @@ Mutation testing can produce false positives when the mutated code path is never
 
 Use `--blacklist` with a file that lists the MD5 checksum of each mutation to ignore (one per line). Checksums are derived from only the lines that actually changed, not the whole file, so they stay valid when unrelated code in the same file is edited.
 
-To get the checksum for a mutation, run go-mutesting normally and copy the hex string printed next to the mutation. For example, if a mutation's checksum is `a1b2c3d4...`, create a file:
+To get the checksum for a mutation, run go-mutesting with `--debug` and copy the hex string printed next to the mutation. For example, if a mutation's checksum is `a1b2c3d4...`, create a file:
 
 ```
 a1b2c3d4e5f6...
@@ -359,9 +359,7 @@ Writes `go-mutesting-summary.json` after each run. Useful for badges, dashboards
   "errorCount": 0,
   "skippedCount": 2,
   "notCoveredCount": 0,
-  "timeOutCount": 0,
   "msi": 0.8333,
-  "mutationCodeCoverage": 0,
   "coveredCodeMsi": 0.9211
 }
 ```
@@ -374,9 +372,7 @@ Writes `go-mutesting-summary.json` after each run. Useful for badges, dashboards
 | `errorCount` | int | Mutations that caused a build or test error |
 | `skippedCount` | int | Mutations skipped (blacklisted or annotated) |
 | `notCoveredCount` | int | Mutations on lines with no coverage (requires `--coverage`) |
-| `timeOutCount` | int | Mutations that timed out during testing |
 | `msi` | float | Mutation Score Indicator: killed / total, range 0–1 |
-| `mutationCodeCoverage` | int | Lines covered by the coverage profile |
 | `coveredCodeMsi` | float | MSI restricted to covered lines, range 0–1 |
 
 #### `--logger-agentic-json`
@@ -386,7 +382,7 @@ Writes `go-mutesting-agentic.json` — a richer payload designed for LLM consump
 ```json
 {
   "generated_at": "2026-05-19T08:13:38Z",
-  "msi": 58.57,
+  "msi": 0.5857,
   "escaped_count": 5,
   "reminder": "A mutant is an example of how this code could be wrong...",
   "mutants": [

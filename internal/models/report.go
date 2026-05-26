@@ -20,8 +20,8 @@ type Report struct {
 	Stats        Stats          `json:"stats"`
 	MutatorStats []MutatorStats `json:"mutatorStats,omitempty"`
 	Escaped      []Mutant       `json:"escaped"`
-	Timeouted    []Mutant       `json:"timeouted"`
 	Killed       []Mutant       `json:"killed"`
+	Skipped      []Mutant       `json:"skipped,omitempty"`
 	Errored      []Mutant       `json:"errored"`
 	NotCovered   []Mutant       `json:"notCovered,omitempty"`
 	// HasCoverage is true when a coverage profile was loaded before mutation.
@@ -37,11 +37,9 @@ type Stats struct {
 	NotCoveredCount      int64   `json:"notCoveredCount"`
 	EscapedCount         int64   `json:"escapedCount"`
 	ErrorCount           int64   `json:"errorCount"`
-	SkippedCount         int64   `json:"skippedCount"`
-	TimeOutCount         int64   `json:"timeOutCount"`
-	Msi                  float64 `json:"msi"`
-	MutationCodeCoverage int64   `json:"mutationCodeCoverage"`
-	CoveredCodeMsi       float64 `json:"coveredCodeMsi"`
+	SkippedCount   int64   `json:"skippedCount"`
+	Msi            float64 `json:"msi"`
+	CoveredCodeMsi float64 `json:"coveredCodeMsi"`
 	DuplicatedCount      int64   `json:"-"`
 }
 
@@ -128,6 +126,7 @@ func (report *Report) computeMutatorStats() []MutatorStats {
 	}
 	add(report.Killed, func(s *MutatorStats) { s.Killed++ })
 	add(report.Escaped, func(s *MutatorStats) { s.Escaped++ })
+	add(report.Skipped, func(s *MutatorStats) { s.Skipped++ })
 	add(report.Errored, func(s *MutatorStats) { s.Killed++ }) // errors count as kills
 
 	result := make([]MutatorStats, 0, len(counts))

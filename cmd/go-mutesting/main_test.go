@@ -157,7 +157,6 @@ func TestMainJSONReport(t *testing.T) {
 	// Collection lengths must match the stat fields.
 	assert.Equal(t, int(s.EscapedCount), len(mutationReport.Escaped))
 	assert.Equal(t, int(s.KilledCount), len(mutationReport.Killed))
-	assert.Nil(t, mutationReport.Timeouted)
 	assert.Nil(t, mutationReport.Errored)
 
 	for i := 0; i < len(mutationReport.Escaped); i++ {

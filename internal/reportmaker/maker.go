@@ -96,7 +96,7 @@ var funcMap = template.FuncMap{
 
 // MakeHTMLReport is a function for creating an HTML report based on a stripped-down version of the models.Report model (not all fields are used)
 func MakeHTMLReport(report models.Report) error {
-	// MSI in percent
+	// Convert 0–1 ratio to percentage for the HTML template.
 	report.Stats.Msi = math.Round(report.Stats.Msi*10_000) / 100
 	groupedMutants := groupEscapedMutants(report.Escaped)
 
@@ -241,7 +241,6 @@ func generateInstanceDescription(mutatorName, diff string) string {
 // data designed for LLM consumption: stable IDs, context lines, test file paths,
 // mutator descriptions, and heuristic test-writing hints.
 func MakeAgenticJSONReport(report models.Report, moduleRoot string) error {
-	msi := math.Round(report.Stats.Msi*10_000) / 100
 	mutants := make([]AgenticMutant, 0, len(report.Escaped))
 	for _, m := range report.Escaped {
 		relFile := toRelPath(m.Mutator.OriginalFilePath, moduleRoot)
@@ -264,7 +263,7 @@ func MakeAgenticJSONReport(report models.Report, moduleRoot string) error {
 
 	doc := agenticReport{
 		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
-		Msi:          msi,
+		Msi:          report.Stats.Msi,
 		EscapedCount: len(report.Escaped),
 		Reminder:     agenticReminder,
 		Mutants:      mutants,
