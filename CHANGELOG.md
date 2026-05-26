@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- Worker goroutines no longer crash with a raw Go stack trace when `--exec` is given a bad path or encounters an I/O error; the error is now printed cleanly to stderr and the mutant is recorded as errored.
+- Diff output is now printed under the report mutex, eliminating interleaved diff/PASS/FAIL lines when running with multiple workers.
+- `--dry-run` output now notes that the count is an upper bound (identical mutations across files are deduplicated in a real run); the `--dry-run` help text says the same.
+- README blacklist section corrected: checksums are only printed with `--debug`, not during a normal run.
+- README `--exec` example path no longer contains a spurious `/v2/` segment that caused a not-found panic.
+- Dead struct fields `TimeOutCount`, `MutationCodeCoverage`, and `Timeouted` (which were never populated) removed from `Stats` and `Report`; the README no longer documents them as meaningful.
+- `--logger-agentic-json` now writes `msi` in the same 0–1 ratio scale as `--logger-summary-json`, eliminating the prior inconsistency where agentic JSON used 0–100.
+- Skipped mutants (mutations that did not compile) are now tracked in `Report.Skipped` and included in the per-mutator breakdown table, making the breakdown consistent with the headline MSI.
+
+---
+
 ## [v2.6.14] — 2026-05-26
 
 ### Fixed
