@@ -253,6 +253,47 @@ func TestMainConfigEnableMutators(t *testing.T) {
 	)
 }
 
+func TestMainGenericsTypeUnionNoInternalError(t *testing.T) {
+	// Regression test for: running go-mutesting against a package that contains
+	// a generics type union constraint (e.g. `*A | *B | *C` in an interface body)
+	// previously produced "INTERNAL ERROR … expected ')', found '|'" because the
+	// arithmetic/bitwise mutator treated the type-level | as a bitwise operator.
+	parser.ClearPackageCache()
+
+	saveStderr := os.Stderr
+	saveStdout := os.Stdout
+	saveCwd, err := os.Getwd()
+	assert.Nil(t, err)
+
+	r, w, err := os.Pipe()
+	assert.Nil(t, err)
+
+	os.Stderr = w
+	os.Stdout = w
+	assert.Nil(t, os.Chdir("../../testdata/genericsexample"))
+
+	bufChannel := make(chan string)
+	go func() {
+		buf := new(bytes.Buffer)
+		_, _ = io.Copy(buf, r)
+		_ = r.Close()
+		bufChannel <- buf.String()
+	}()
+
+	exitCode := mainCmd([]string{"--exec-timeout", "10"})
+
+	assert.Nil(t, w.Close())
+	os.Stderr = saveStderr
+	os.Stdout = saveStdout
+	assert.Nil(t, os.Chdir(saveCwd))
+
+	out := <-bufChannel
+
+	assert.Equal(t, returnOk, exitCode)
+	assert.Contains(t, out, "mutation score")
+	assert.NotContains(t, out, "INTERNAL ERROR")
+}
+
 func testMain(t *testing.T, root string, exec []string, expectedExitCode int, contains string) {
 	// Clear the parser cache so each test loads files fresh from disk.
 	// Without this, TestMainMatch's exec script (which writes to the original

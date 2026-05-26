@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- `arithmetic/bitwise` mutator no longer produces `INTERNAL ERROR … expected ')', found '|'` when run against packages that contain generics type union constraints (e.g. `type T interface { *A | *B | *C }`). The `|` in such constraints is a type-level operator and is now correctly skipped.
+
+---
+
 ## [v2.6.13] — 2026-05-21
 
 ### Added
