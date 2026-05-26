@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
-## [Unreleased]
+## [v2.6.14] — 2026-05-26
 
 ### Fixed
 - `arithmetic/bitwise` mutator no longer produces `INTERNAL ERROR … expected ')', found '|'` when run against packages that contain generics type union constraints (e.g. `type T interface { *A | *B | *C }`). The `|` in such constraints is a type-level operator and is now correctly skipped.
@@ -309,3 +309,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.6.10]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.9...v2.6.10
 [v2.6.11]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.10...v2.6.11
 [v2.6.12]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.11...v2.6.12
+[v2.6.13]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.12...v2.6.13
+[v2.6.14]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.13...v2.6.14
