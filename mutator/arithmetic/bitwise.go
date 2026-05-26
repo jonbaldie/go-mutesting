@@ -30,14 +30,11 @@ func MutatorArithmeticBitwise(_ *types.Package, info *types.Info, node ast.Node)
 
 	// In Go 1.18+ generics, a type union constraint such as `*A | *B | *C`
 	// inside an interface body is represented as a chain of BinaryExpr nodes
-	// with Op=token.OR whose operands are type expressions, not values.
-	// Mutating these produces unparseable code (e.g. `*A & *B` in an interface
-	// body), so we skip any BinaryExpr whose left operand is a type expression.
+	// with Op=token.OR. The type-checker classifies every node in the chain as
+	// a type expression (IsType()==true). Mutating them produces unparseable
+	// code (e.g. `*A & *B` in an interface body), so skip them.
 	if info != nil {
 		if tv, ok2 := info.Types[n]; ok2 && tv.IsType() {
-			return nil
-		}
-		if tv, ok2 := info.Types[n.X]; ok2 && tv.IsType() {
 			return nil
 		}
 	}
