@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
-## [Unreleased]
+## [v2.6.15] — 2026-05-26
 
 ### Fixed
 - Worker goroutines no longer crash with a raw Go stack trace when `--exec` is given a bad path or encounters an I/O error; the error is now printed cleanly to stderr and the mutant is recorded as errored.
@@ -325,3 +325,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.6.12]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.11...v2.6.12
 [v2.6.13]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.12...v2.6.13
 [v2.6.14]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.13...v2.6.14
+[v2.6.15]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.14...v2.6.15
