@@ -22,10 +22,24 @@ var bitwiseMutations = map[token.Token]token.Token{
 }
 
 // MutatorArithmeticBitwise implements a mutator to change bitwise arithmetic.
-func MutatorArithmeticBitwise(_ *types.Package, _ *types.Info, node ast.Node) []mutator.Mutation {
+func MutatorArithmeticBitwise(_ *types.Package, info *types.Info, node ast.Node) []mutator.Mutation {
 	n, ok := node.(*ast.BinaryExpr)
 	if !ok {
 		return nil
+	}
+
+	// In Go 1.18+ generics, a type union constraint such as `*A | *B | *C`
+	// inside an interface body is represented as a chain of BinaryExpr nodes
+	// with Op=token.OR whose operands are type expressions, not values.
+	// Mutating these produces unparseable code (e.g. `*A & *B` in an interface
+	// body), so we skip any BinaryExpr whose left operand is a type expression.
+	if info != nil {
+		if tv, ok2 := info.Types[n]; ok2 && tv.IsType() {
+			return nil
+		}
+		if tv, ok2 := info.Types[n.X]; ok2 && tv.IsType() {
+			return nil
+		}
 	}
 
 	original := n.Op
