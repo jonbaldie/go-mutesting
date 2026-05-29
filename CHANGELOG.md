@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [v2.6.16] — 2026-05-29
+
+### Fixed
+- Hardened the `cmd/go-mutesting` config test fixtures against the `*.test` `.gitignore` rule. The fixtures (`testdata/configs/*.yml.test`) are already tracked, but their `.yml.test` suffix matches the `*.test` rule meant for compiled Go test binaries, so any future `git rm` + re-add would silently drop them and leave a clean clone with a red test suite. A `.gitignore` negation now keeps them tracked.
+
+---
+
 ## [v2.6.15] — 2026-05-26
 
 ### Fixed
@@ -326,3 +333,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.6.13]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.12...v2.6.13
 [v2.6.14]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.13...v2.6.14
 [v2.6.15]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.14...v2.6.15
+[v2.6.16]: https://github.com/jonbaldie/go-mutesting/compare/v2.6.15...v2.6.16
