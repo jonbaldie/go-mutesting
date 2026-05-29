@@ -1,3 +1,8 @@
+> **This repository is being superseded.**
+> Development has moved to [quality-gates/mutago](https://github.com/quality-gates/mutago).
+> This fork will be made read-only once the transition is complete.
+> Please use **mutago** for new projects.
+
 # go-mutesting [![Go Reference](https://pkg.go.dev/badge/github.com/jonbaldie/go-mutesting/v2.svg)](https://pkg.go.dev/github.com/jonbaldie/go-mutesting/v2) [![Mutation Testing](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml/badge.svg)](https://github.com/jonbaldie/go-mutesting/actions/workflows/mutation.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Go 1.26+](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://go.dev)
 
 go-mutesting is a mutation testing tool for Go. It tweaks your code in small ways and checks whether your tests catch the change. If they don't, that's a gap in your test suite worth closing.
