@@ -43,6 +43,7 @@ import (
 	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	_ "github.com/jonbaldie/go-mutesting/v2/mutator/arithmetic"
 	_ "github.com/jonbaldie/go-mutesting/v2/mutator/branch"
+	_ "github.com/jonbaldie/go-mutesting/v2/mutator/composite"
 	_ "github.com/jonbaldie/go-mutesting/v2/mutator/concurrency"
 	_ "github.com/jonbaldie/go-mutesting/v2/mutator/conditional"
 	_ "github.com/jonbaldie/go-mutesting/v2/mutator/expression"
