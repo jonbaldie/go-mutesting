@@ -139,9 +139,9 @@ go-mutesting --exec "$GOPATH/src/github.com/jonbaldie/go-mutesting/scripts/exec/
 The execution will print the following output.
 
 ```diff
-PASS example/example.go:18 (statement/remove)
-PASS example/example.go:22 (branch/if)
-PASS example/example.go:24 (numbers/incrementer)
+KILLED example/example.go:18 (statement/remove)
+KILLED example/example.go:22 (branch/if)
+KILLED example/example.go:24 (numbers/incrementer)
 --- Original
 +++ New
 @@ -16,7 +16,7 @@
@@ -153,9 +153,9 @@ PASS example/example.go:24 (numbers/incrementer)
         }
 
         n++
-FAIL example/example.go:17 (statement/remove)
-PASS example/example.go:26 (arithmetic/base)
-PASS example/example.go:28 (expression/remove)
+ESCAPED example/example.go:17 (statement/remove)
+KILLED example/example.go:26 (arithmetic/base)
+KILLED example/example.go:28 (expression/remove)
 --- Original
 +++ New
 @@ -24,7 +24,6 @@
@@ -166,13 +166,13 @@ PASS example/example.go:28 (expression/remove)
 
         return n
  }
-FAIL example/example.go:25 (statement/remove)
-PASS example/example.go:30 (branch/if)
+ESCAPED example/example.go:25 (statement/remove)
+KILLED example/example.go:30 (branch/if)
 The mutation score is 75.00% (6 killed, 2 escaped, 0 errored, 0 not covered, 0 skipped, 8 total)
 The covered-code mutation score is 0.00%
 ```
 
-The output shows eight mutations. Six were killed (tests detected the mutation — shown as `PASS`). Two escaped (tests didn't catch them — shown as `FAIL`), and their diffs are printed so you can write a test to cover the gap.
+The output shows eight mutations. Six were killed (tests detected the mutation — shown as `KILLED`). Two escaped (tests didn't catch them — shown as `ESCAPED`), and their diffs are printed so you can write a test to cover the gap.
 
 The summary shows the **mutation score** (MSI): killed / total. For the example above, 6/8 = 75.00%. A score of 100% means every mutation was caught.
 
@@ -197,9 +197,9 @@ go-mutesting --blacklist example.blacklist github.com/jonbaldie/go-mutesting/v2/
 The execution will print the following output.
 
 ```diff
-PASS example/example.go:18 (statement/remove)
-PASS example/example.go:22 (branch/if)
-PASS example/example.go:24 (numbers/incrementer)
+KILLED example/example.go:18 (statement/remove)
+KILLED example/example.go:22 (branch/if)
+KILLED example/example.go:24 (numbers/incrementer)
 --- Original
 +++ New
 @@ -16,7 +16,7 @@
@@ -211,10 +211,10 @@ PASS example/example.go:24 (numbers/incrementer)
         }
 
         n++
-FAIL example/example.go:17 (statement/remove)
-PASS example/example.go:26 (arithmetic/base)
-PASS example/example.go:28 (expression/remove)
-PASS example/example.go:30 (branch/if)
+ESCAPED example/example.go:17 (statement/remove)
+KILLED example/example.go:26 (arithmetic/base)
+KILLED example/example.go:28 (expression/remove)
+KILLED example/example.go:30 (branch/if)
 The mutation score is 85.71% (6 killed, 1 escaped, 0 errored, 0 not covered, 0 skipped, 7 total)
 The covered-code mutation score is 0.00%
 ```
