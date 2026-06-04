@@ -1,0 +1,8 @@
+issue_prefix: gm
+issue-prefix: gm
+dolt.auto-start: false
+export.auto: false
+gc.endpoint_origin: inherited_city
+gc.endpoint_status: verified
+
+sync.remote: "git+https://github.com/jonbaldie/go-mutesting"
