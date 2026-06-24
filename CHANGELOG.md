@@ -8,6 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ---
 
+## [v2.7.6] — 2026-06-24
+
+### Changed
+- Reduced the internal mutation-run struct's CouplingBetweenObjects (CBO) metric by threading the `gitdiff.ChangedLines` parameter through the call chain instead of storing it as a field. This passes the messgo CBO quality gate without changing external behavior or API surface. The monolithic mutation engine was also collapsed into a dedicated `internal/engine` package.
+
+### Fixed
+- Mutation locations used by reports, coverage, per-test selection, and `--git-diff-lines` now come from the original AST token position instead of the first line changed by `go/printer`. This keeps PR filtering and reported lines accurate for leading comments, multiline syntax, and insertion-style mutators. `statement/remove-self-assign` also anchors its empty replacement at the removed statement so comments remain in place.
+- `FindOriginalStartLine` now reports the line after a zero-length original range for pure additions, including line 1 for additions to an empty file. It also validates hunk ranges and body prefixes, returning the fallback line instead of accepting malformed diffs or overflowing `int64` line coordinates.
+- Noop-based statement and branch mutators no longer emit invalid Go when removed code declares local variables, uses struct field keys, or contains selectors rooted in calls. Generated references are position-normalized so interior comments stay outside noop assignments, and empty branch bodies are skipped instead of producing identical mutants.
+
+---
+
 ## [v2.7.5] — 2026-06-16
 
 ### Fixed
@@ -399,3 +411,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.7.3]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.2...v2.7.3
 [v2.7.4]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.3...v2.7.4
 [v2.7.5]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.4...v2.7.5
+[v2.7.6]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.5...v2.7.6

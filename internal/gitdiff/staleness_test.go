@@ -20,7 +20,7 @@ import (
 //   - main:    A=1 B=222 C=3   (B changed on main, AFTER feature branched)
 //   - feature: A=1 B=2   C=333 (only C changed in the PR)
 //
-// The developer's PR only touches line 5 (func C). The bug makes mutago also
+// The developer's PR only touches line 5 (func C). The bug makes go-mutesting also
 // consider line 4 (func B) "changed", because two-dot diff attributes main's
 // own commit to the feature branch.
 func TestParseChangedLines_StaleBranchExcludesTargetChanges(t *testing.T) {
