@@ -58,6 +58,23 @@ go build -o /tmp/go-mutesting ./cmd/go-mutesting
 
 Exit code 4 means the gate failed (escaped mutants). Exit code 0 means all gates passed.
 
+## Definition of Ready
+
+This repo ships committed git hook scripts under `githooks/` that mirror the CI checks
+in `.github/workflows/` (see `githooks/pre-commit` and `githooks/pre-push` for exactly
+which checks map to which workflow). They are **not** activated on clone. As a one-time
+opt-in per local clone, run:
+
+```bash
+git config core.hooksPath githooks
+```
+
+`pre-commit` runs the fast, whole-tree, deterministic checks (gofmt, go vet, gocyclo,
+ineffassign, messgo, build, unit tests) and hard-fails on any finding or missing tool.
+`pre-push` runs mutation testing scoped to the diff against `origin/master` via
+`--git-diff-lines`. Vulnerability scanning (`security.yml`) depends on external advisory
+feeds and stays CI-only; it is not mirrored locally.
+
 ## Shipping workflow
 
 Follow these steps in order when landing a change:
@@ -95,3 +112,19 @@ Integration tests live in `cmd/go-mutesting/main_test.go`. They invoke `mainCmd`
 **For quality gate tests that must fail**, use a threshold that is permanently out of reach (e.g. `--min-msi 101`) rather than relying on the example package having escaped mutants.
 
 **After running `go test ./cmd/go-mutesting/`**, always run `git restore example/example.go`. The integration tests invoke the mutation binary against the example package and the file is sometimes left with mutations applied.
+
+## Agent skills
+
+21 engineering/productivity skills from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `.claude/skills/THIRD-PARTY-NOTICES.md`) are vendored under `.claude/skills/`.
+
+### Issue tracker
+
+Issues live as GitHub issues on `jonbaldie/go-mutesting`; external PRs are not treated as a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical role names map 1:1 to this repo's label strings (`bug`, `enhancement`, `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
