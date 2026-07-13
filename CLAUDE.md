@@ -128,3 +128,10 @@ Canonical role names map 1:1 to this repo's label strings (`bug`, `enhancement`,
 ### Domain docs
 
 Single-context layout — `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Finally
+
+- If writing production code, then strictly use the /tdd skill
+- If attempting to diagnose a bug or issue, then strictly use the /diagnosing-bugs skill
+- Use the available Serena tools when appropriate (IDE-like symbol searches, e.g.)
+- Be extremely concise in your messages to me
