@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+### Added
+- Vendored 21 engineering/productivity agent skills from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT license) under `.claude/skills/`, with attribution in `.claude/skills/THIRD-PARTY-NOTICES.md`. Configured the `triage` skill's issue-tracker and label vocabulary for this repo in `docs/agents/`, documented in `CLAUDE.md` under a new "Agent skills" section.
+- Committed git hook scripts under `githooks/` (`pre-commit`, `pre-push`) that mirror the checks in `.github/workflows/`: `pre-commit` runs the fast whole-tree checks (gofmt, go vet, gocyclo, ineffassign, messgo, build, unit tests), hard-failing on any finding or missing tool, while `pre-push` runs mutation testing scoped to the diff against `origin/master` via `--git-diff-lines`. Not activated on clone — opt in with `git config core.hooksPath githooks`. Documented under a new "Definition of Ready" section in `CLAUDE.md`.
+
+### Changed
+- Extracted the git/write/line-matching helpers in `TestParseChangedLines_StaleBranchExcludesTargetChanges` into top-level test functions, dropping its cyclomatic complexity from 17 to under the goreportcard gocyclo threshold of 15.
+
+### Fixed
+- `TestParseChangedLines_StaleBranchExcludesTargetChanges` now forces its scratch repo's initial branch name (`git init -b master`) instead of relying on the user's `init.defaultBranch` config.
+- Fixed `gofmt -s` findings (redundant blank lines, misaligned struct tags) in `cmd/go-mutesting/main_test.go`, `internal/coverage/coverage_test.go`, `internal/engine/engine.go`, and `internal/models/report.go`.
+
 ---
 
 ## [v2.7.6] — 2026-06-24

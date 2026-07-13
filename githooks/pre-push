@@ -1,0 +1,111 @@
+#!/bin/sh
+# Local mirror of .github/workflows/mutation.yml, scoped to the diff against
+# origin/master instead of the whole tree (mutation testing is slow; running it
+# whole-tree on every push is not viable locally). Hard-fails on escaped
+# mutants, on a gate miss, and on any missing tool - no silent skips.
+#
+# Not opt-out by default. To enable this hook, run once:
+#   git config core.hooksPath githooks
+set -eu
+
+ROOT_DIR=$(git rev-parse --show-toplevel)
+cd "$ROOT_DIR"
+
+require_tool() {
+	tool="$1"
+	hint="$2"
+	if ! command -v "$tool" >/dev/null 2>&1; then
+		printf 'FAIL: required tool "%s" not found on PATH.\n  install with: %s\n' "$tool" "$hint" >&2
+		exit 1
+	fi
+}
+
+require_tool go "https://go.dev/doc/install"
+
+# Skip only when every pushed ref is a delete (no new commits to analyze).
+# This is the one legitimate no-op case for a pre-push hook, not a silent
+# skip of a check: a deleted ref has no diff to mutate.
+ANY_UPDATE=0
+HEAD_SHA=$(git rev-parse HEAD)
+while read -r local_ref local_sha remote_ref remote_sha; do
+	if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+		continue
+	fi
+	ANY_UPDATE=1
+	if ! local_commit=$(git rev-parse "${local_sha}^{commit}" 2>/dev/null); then
+		printf 'FAIL: pushed ref %s does not resolve to a commit and cannot be checked.\n' "$local_ref" >&2
+		exit 1
+	fi
+	if [ "$local_commit" != "$HEAD_SHA" ]; then
+		printf 'FAIL: pushed ref %s is not the checked-out HEAD and cannot be checked safely.\n' "$local_ref" >&2
+		exit 1
+	fi
+done
+if [ "$ANY_UPDATE" -eq 0 ]; then
+	echo "pre-push: only ref deletions pushed, nothing to mutate."
+	exit 0
+fi
+
+if ! git rev-parse --verify origin/master >/dev/null 2>&1; then
+	printf 'FAIL: origin/master not found locally. Run: git fetch origin master\n' >&2
+	exit 1
+fi
+
+TMP_DIR=$(mktemp -d)
+CHECKOUT_DIR="$TMP_DIR/checkout"
+GO_MUTESTING_BIN="$TMP_DIR/go-mutesting"
+cleanup() {
+	cd "$ROOT_DIR"
+	git worktree remove --force "$CHECKOUT_DIR" >/dev/null 2>&1 || true
+	rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
+echo "pre-push: checking pushed HEAD in an isolated worktree..."
+git worktree add --quiet --detach "$CHECKOUT_DIR" "$HEAD_SHA"
+cd "$CHECKOUT_DIR"
+
+echo "pre-push: building go-mutesting..."
+if ! go build -o "$GO_MUTESTING_BIN" ./cmd/go-mutesting; then
+	printf 'FAIL: go build ./cmd/go-mutesting failed\n' >&2
+	exit 1
+fi
+
+echo "pre-push: running mutation testing scoped to the diff against origin/master..."
+# Same package list, timeout, and quality gates as .github/workflows/mutation.yml
+# and CLAUDE.md, restricted to changed lines via --git-diff-lines/--git-diff-base.
+# --ignore-msi-with-no-mutations avoids failing pushes that don't touch these
+# packages at all.
+STATUS=0
+"$GO_MUTESTING_BIN" \
+	--exec-timeout 30 \
+	--coverage \
+	--git-diff-lines \
+	--git-diff-base origin/master \
+	--ignore-msi-with-no-mutations \
+	--min-msi 75 \
+	--min-covered-msi 80 \
+	github.com/jonbaldie/go-mutesting/v2/mutator/arithmetic \
+	github.com/jonbaldie/go-mutesting/v2/mutator/branch \
+	github.com/jonbaldie/go-mutesting/v2/mutator/composite \
+	github.com/jonbaldie/go-mutesting/v2/mutator/concurrency \
+	github.com/jonbaldie/go-mutesting/v2/mutator/conditional \
+	github.com/jonbaldie/go-mutesting/v2/mutator/expression \
+	github.com/jonbaldie/go-mutesting/v2/mutator/loop \
+	github.com/jonbaldie/go-mutesting/v2/mutator/numbers \
+	github.com/jonbaldie/go-mutesting/v2/mutator/select \
+	github.com/jonbaldie/go-mutesting/v2/mutator/statement \
+	github.com/jonbaldie/go-mutesting/v2/internal/filter \
+	github.com/jonbaldie/go-mutesting/v2/internal/coverage \
+	github.com/jonbaldie/go-mutesting/v2/internal/gitdiff \
+	github.com/jonbaldie/go-mutesting/v2/internal/models || STATUS=$?
+
+if [ "$STATUS" -eq 4 ]; then
+	printf '\nFAIL: mutation quality gate not met (escaped mutants in the diff against origin/master).\n' >&2
+	exit 1
+elif [ "$STATUS" -ne 0 ]; then
+	printf '\nFAIL: go-mutesting exited with status %s (tool error).\n' "$STATUS" >&2
+	exit 1
+fi
+
+printf '\nmutation quality gate passed.\n'
