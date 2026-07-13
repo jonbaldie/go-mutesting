@@ -4,7 +4,7 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [v2.7.7] — 2026-07-13
 
 ### Added
 - Vendored 21 engineering/productivity agent skills from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT license) under `.claude/skills/`, with attribution in `.claude/skills/THIRD-PARTY-NOTICES.md`. Configured the `triage` skill's issue-tracker and label vocabulary for this repo in `docs/agents/`, documented in `CLAUDE.md` under a new "Agent skills" section.
@@ -423,3 +423,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.7.4]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.3...v2.7.4
 [v2.7.5]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.4...v2.7.5
 [v2.7.6]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.5...v2.7.6
+[v2.7.7]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.6...v2.7.7
