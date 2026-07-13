@@ -4,7 +4,7 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [v2.7.9] — 2026-07-13
 
 ### Changed
 - Mutation CI now tests only lines changed by a pull request, while retaining the full-tree gate for code-related pushes to `master`. Pull requests with no mutable changes pass without running mutants.
@@ -439,4 +439,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.7.6]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.5...v2.7.6
 [v2.7.7]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.6...v2.7.7
 [v2.7.8]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.7...v2.7.8
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.8...HEAD
+[v2.7.9]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.8...v2.7.9
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.9...HEAD
