@@ -2,38 +2,50 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://jonbaldie.github.io/go-mutesting/</loc>
-         <lastmod>2026-06-16</lastmod>
+         <lastmod>2026-07-13</lastmod>
     </url>
     <url>
          <loc>https://jonbaldie.github.io/go-mutesting/ci/</loc>
-         <lastmod>2026-06-16</lastmod>
+         <lastmod>2026-07-13</lastmod>
     </url>
     <url>
          <loc>https://jonbaldie.github.io/go-mutesting/cli/</loc>
-         <lastmod>2026-06-16</lastmod>
+         <lastmod>2026-07-13</lastmod>
     </url>
     <url>
          <loc>https://jonbaldie.github.io/go-mutesting/config/</loc>
-         <lastmod>2026-06-16</lastmod>
+         <lastmod>2026-07-13</lastmod>
     </url>
     <url>
          <loc>https://jonbaldie.github.io/go-mutesting/custom-mutators/</loc>
-         <lastmod>2026-06-16</lastmod>
+         <lastmod>2026-07-13</lastmod>
     </url>
     <url>
          <loc>https://jonbaldie.github.io/go-mutesting/install/</loc>
-         <lastmod>2026-06-16</lastmod>
+         <lastmod>2026-07-13</lastmod>
     </url>
     <url>
          <loc>https://jonbaldie.github.io/go-mutesting/json-outputs/</loc>
-         <lastmod>2026-06-16</lastmod>
+         <lastmod>2026-07-13</lastmod>
     </url>
     <url>
          <loc>https://jonbaldie.github.io/go-mutesting/mutators/</loc>
-         <lastmod>2026-06-16</lastmod>
+         <lastmod>2026-07-13</lastmod>
     </url>
     <url>
          <loc>https://jonbaldie.github.io/go-mutesting/quickstart/</loc>
-         <lastmod>2026-06-16</lastmod>
+         <lastmod>2026-07-13</lastmod>
+    </url>
+    <url>
+         <loc>https://jonbaldie.github.io/go-mutesting/agents/domain/</loc>
+         <lastmod>2026-07-13</lastmod>
+    </url>
+    <url>
+         <loc>https://jonbaldie.github.io/go-mutesting/agents/issue-tracker/</loc>
+         <lastmod>2026-07-13</lastmod>
+    </url>
+    <url>
+         <loc>https://jonbaldie.github.io/go-mutesting/agents/triage-labels/</loc>
+         <lastmod>2026-07-13</lastmod>
     </url>
 </urlset>
