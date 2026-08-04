@@ -4,6 +4,13 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
+## [v2.8.0] — 2026-08-03
+
+### Changed
+- Upgraded module to `go 1.26.5`, clearing GO-2026-5856 / CVE-2026-42505 (`crypto/tls`), GO-2026-5039 / CVE-2026-42507 (`net/textproto`), GO-2026-5037 / CVE-2026-27145 (`crypto/x509`), GO-2026-5038 / CVE-2026-42504 (`mime`), and GO-2026-4970 / CVE-2026-39822 (`os`).
+
+---
+
 ## [v2.7.9] — 2026-07-13
 
 ### Changed
@@ -440,4 +447,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.7.7]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.6...v2.7.7
 [v2.7.8]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.7...v2.7.8
 [v2.7.9]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.8...v2.7.9
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.9...HEAD
+[v2.8.0]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.9...v2.8.0
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.8.0...HEAD
