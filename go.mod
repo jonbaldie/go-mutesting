@@ -1,6 +1,6 @@
 module github.com/jonbaldie/go-mutesting/v2
 
-go 1.26.3
+go 1.26.5
 
 require (
 	github.com/fatih/color v1.18.0
