@@ -4,10 +4,12 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [v2.8.2] — 2026-08-20
 
 ### Fixed
 - Agentic JSON report generation no longer panics when an escaped mutant's start line falls outside its captured source text (`extractContextLines` slice bounds).
+
+---
 
 ## [v2.8.1] — 2026-08-05
 
@@ -461,4 +463,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.7.9]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.8...v2.7.9
 [v2.8.0]: https://github.com/jonbaldie/go-mutesting/compare/v2.7.9...v2.8.0
 [v2.8.1]: https://github.com/jonbaldie/go-mutesting/compare/v2.8.0...v2.8.1
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.8.1...HEAD
+[v2.8.2]: https://github.com/jonbaldie/go-mutesting/compare/v2.8.1...v2.8.2
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.8.2...HEAD
