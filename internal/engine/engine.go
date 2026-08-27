@@ -526,7 +526,7 @@ func applyMutator(r *mutationRun, m mutatorItem, fc *fileContext, node ast.Node,
 	return mutationID
 }
 
-func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutago.PositionedMutation, mutationID int, originalStartLine int64, originalSourceCode []byte, dryRunCounts, dryRunGlobalTotals map[string]int) {
+func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, originalStartLine int64, originalSourceCode []byte, dryRunCounts, dryRunGlobalTotals map[string]int) {
 	if r.opts.General.DryRun {
 		countDryRunMutation(m.Name, dryRunCounts, dryRunGlobalTotals)
 		return
@@ -534,7 +534,7 @@ func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation 
 	processMutation(r, m, fc, mutation, mutationID, originalStartLine, originalSourceCode)
 }
 
-func processMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutago.PositionedMutation, mutationID int, originalStartLine int64, originalSourceCode []byte) {
+func processMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, originalStartLine int64, originalSourceCode []byte) {
 	mutant := models.Mutant{}
 	mutant.Mutator.MutatorName = m.Name
 	mutant.Mutator.OriginalFilePath = fc.sourceFile
@@ -1380,7 +1380,7 @@ func runCustomExec(job execJob, mutant *models.Mutant) int {
 
 	err := execCommand.Wait()
 	if ctx.Err() != nil {
-		fmt.Fprintf(os.Stderr, "mutago: custom exec timed out or was cancelled: %v\n", ctx.Err())
+		fmt.Fprintf(os.Stderr, "go-mutesting: custom exec timed out or was cancelled: %v\n", ctx.Err())
 		return 3
 	}
 	execExitCode, ok := commandExitCode(err)

@@ -22,8 +22,8 @@ func TestBuildPerTestProfileCompilesOnce(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	_, err = BuildPerTestProfile(
-		"github.com/quality-gates/mutago/v2/internal/coverage/testdata/entrypoints",
-		"github.com/quality-gates/mutago/v2", dir, 30, 1, []string{"-trimpath"},
+		"github.com/jonbaldie/go-mutesting/v2/internal/coverage/testdata/entrypoints",
+		"github.com/jonbaldie/go-mutesting/v2", dir, 30, 1, []string{"-trimpath"},
 	)
 	require.NoError(t, err)
 	calls, err := os.ReadFile(logPath)
@@ -339,7 +339,7 @@ func TestCountTests_RealPackage(t *testing.T) {
 }
 
 func TestCountTests_ExcludesBenchmarks(t *testing.T) {
-	count := CountTests("github.com/quality-gates/mutago/v2/internal/coverage/testdata/entrypoints")
+	count := CountTests("github.com/jonbaldie/go-mutesting/v2/internal/coverage/testdata/entrypoints")
 	assert.Equal(t, 2, count, "only Test and Fuzz entrypoints run via -run")
 }
 
@@ -429,8 +429,8 @@ func TestBuildPerTestProfileForTests_InvalidTempDir(t *testing.T) {
 	require.NoError(t, os.WriteFile(tmpFile, []byte("occupied"), 0o600))
 
 	prof, err := BuildPerTestProfileForTests(
-		"github.com/quality-gates/mutago/v2/internal/coverage/testdata/entrypoints",
-		"github.com/quality-gates/mutago/v2", tmpFile, 30, 1, nil, []string{"TestAlpha"},
+		"github.com/jonbaldie/go-mutesting/v2/internal/coverage/testdata/entrypoints",
+		"github.com/jonbaldie/go-mutesting/v2", tmpFile, 30, 1, nil, []string{"TestAlpha"},
 	)
 	assert.Error(t, err)
 	assert.Nil(t, prof)
@@ -438,8 +438,8 @@ func TestBuildPerTestProfileForTests_InvalidTempDir(t *testing.T) {
 
 func TestBuildPerTestProfileForTests_CompileFailure(t *testing.T) {
 	prof, err := BuildPerTestProfileForTests(
-		"github.com/quality-gates/mutago/v2/nonexistent_pkg_xyzzy",
-		"github.com/quality-gates/mutago/v2", t.TempDir(), 30, 1, nil, []string{"TestMissing"},
+		"github.com/jonbaldie/go-mutesting/v2/nonexistent_pkg_xyzzy",
+		"github.com/jonbaldie/go-mutesting/v2", t.TempDir(), 30, 1, nil, []string{"TestMissing"},
 	)
 	assert.ErrorContains(t, err, "compile coverage test binary")
 	assert.Nil(t, prof)
