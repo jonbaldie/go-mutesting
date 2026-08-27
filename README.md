@@ -352,6 +352,11 @@ go-mutesting --baseline go-mutesting-baseline.json --fail-on-escaped ./...
 
 ### <a name="json-outputs"></a>JSON output schemas
 
+With `json_output: true`, the full `report.json` stores original source text in
+the top-level `sources` map, keyed by file path. Mutants reference that text via
+`mutator.originalFilePath`; new reports omit the legacy per-mutant
+`originalSourceCode` and `mutatedSourceCode` copies.
+
 #### `--logger-summary-json`
 
 Writes `go-mutesting-summary.json` after each run. Useful for badges, dashboards, and downstream scripts.
