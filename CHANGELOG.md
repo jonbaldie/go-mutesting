@@ -4,7 +4,10 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
-## [v2.8.4] — 2026-08-27
+## [Unreleased]
+
+### Changed
+- Package parsing no longer loads full syntax and type information for dependencies. Full-tree dry runs complete substantially faster while retaining target-package type information.
 
 ## [v2.8.5] — 2026-08-27
 
