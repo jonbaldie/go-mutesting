@@ -7,7 +7,6 @@ import (
 
 	"github.com/jonbaldie/go-mutesting/v2/mutator"
 	"github.com/jonbaldie/go-mutesting/v2/test"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,29 +27,31 @@ func TestMutatorNumbersDecrementerRegistered(t *testing.T) {
 }
 
 func TestMutatorNumbersDecrementerParenthesizesNegativeValues(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name     string
 		kind     token.Token
 		original string
 		mutated  string
 	}{
-		{name: "integer becomes negative", kind: token.INT, original: "0", mutated: "(-1)"},
-		{name: "integer reaches zero", kind: token.INT, original: "1", mutated: "0"},
-		{name: "float becomes negative", kind: token.FLOAT, original: "0.5", mutated: "(-0.5)"},
-		{name: "float reaches zero", kind: token.FLOAT, original: "1.0", mutated: "0"},
+		{name: "integer", kind: token.INT, original: "0", mutated: "(-1)"},
+		{name: "positive integer", kind: token.INT, original: "1", mutated: "0"},
+		{name: "float", kind: token.FLOAT, original: "0.5", mutated: "(-0.5)"},
+		{name: "positive float", kind: token.FLOAT, original: "1.0", mutated: "0"},
 	}
 
-	for _, tt := range testCases {
-		t.Run(tt.name, func(t *testing.T) {
-			literal := &ast.BasicLit{Kind: tt.kind, Value: tt.original}
-			mutations := MutatorNumbersDecrementer(nil, nil, literal)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			node := &ast.BasicLit{Kind: testCase.kind, Value: testCase.original}
+			mutations := MutatorNumbersDecrementer(nil, nil, node)
 			require.Len(t, mutations, 1)
 
 			mutations[0].Change()
-			assert.Equal(t, tt.mutated, literal.Value)
+			assert.Equal(t, testCase.mutated, node.Value)
 
 			mutations[0].Reset()
-			assert.Equal(t, tt.original, literal.Value)
+			assert.Equal(t, testCase.original, node.Value)
 		})
 	}
 }
