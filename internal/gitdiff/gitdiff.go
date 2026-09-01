@@ -132,9 +132,9 @@ func IsRelativeLineChanged(cl ChangedLines, relFile string, line int) bool {
 // false is returned — the mutation targets an unchanged line.
 // When a file is absent from cl entirely, all of its mutations are filtered.
 //
-// When more than one key matches (one relPath is a path-suffix of another),
-// the longest — most specific — match wins, so resolution is deterministic
-// regardless of map iteration order.
+// When more than one key matches (one relPath is a path-suffix of another,
+// e.g. "foo/bar.go" and "bar.go"), the longest — most specific — match wins,
+// so resolution is deterministic regardless of map iteration order.
 func IsLineChanged(cl ChangedLines, absFile string, line int) bool {
 	if line == 0 {
 		return true
