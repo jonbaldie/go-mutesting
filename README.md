@@ -250,7 +250,7 @@ Use `--min-msi` and `--min-covered-msi` to fail CI if mutation scores drop below
 go-mutesting --min-msi 60 --min-covered-msi 80 ./...
 ```
 
-Add `--coverage` to generate a coverage profile first. Mutants on uncovered lines skip test execution, are marked "not covered", and are excluded from the covered-MSI denominator (so you're not penalised for code your tests don't reach at all).
+Add `--coverage` to generate a coverage profile first. Mutants on uncovered lines skip test execution, are marked "not covered", and are excluded from the covered-MSI denominator (so you're not penalised for code your tests don't reach at all). If the coverage run fails, go-mutesting stops with exit code 3 rather than using a partial profile.
 
 ```bash
 go-mutesting --coverage --min-msi 50 --min-covered-msi 75 ./...
@@ -260,7 +260,7 @@ The final summary includes a per-mutator breakdown so you can see which mutation
 
 Use `--noop` to run the test suite once without any mutations first. If the clean suite already fails, go-mutesting exits immediately rather than producing meaningless results.
 
-Use `--timeout-coefficient` to scale the per-mutation timeout relative to the baseline test-suite run time (e.g. `--timeout-coefficient 3` allows each mutation up to 3× the clean run). More reliable than a fixed `--exec-timeout` on machines with variable load.
+Use `--timeout-coefficient` to scale the per-mutation timeout relative to an uncached baseline test-suite run (e.g. `--timeout-coefficient 3` allows each mutation up to 3× the clean run). More reliable than a fixed `--exec-timeout` on machines with variable load. Built-in Go test runs add `-count=1` unless you set `-count` yourself; its value must be positive.
 
 ### <a name="git-diff"></a>Git diff filtering (CI mode)
 
