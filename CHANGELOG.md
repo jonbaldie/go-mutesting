@@ -4,7 +4,7 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [v2.9.3] — 2026-09-01
 
 ### Fixed
 - Adaptive timeouts now use uncached Go test baselines, preventing stale cached runs from setting an undersized mutation timeout. Failed coverage runs now stop clearly instead of applying a partial profile.
@@ -521,3 +521,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.9.0]: https://github.com/jonbaldie/go-mutesting/compare/v2.8.6...v2.9.0
 [v2.9.1]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.0...v2.9.1
 [v2.9.2]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.1...v2.9.2
+[v2.9.3]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.2...v2.9.3
