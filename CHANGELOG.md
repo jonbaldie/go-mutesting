@@ -4,6 +4,11 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Adaptive timeouts now use uncached Go test baselines, preventing stale cached runs from setting an undersized mutation timeout. Failed coverage runs now stop clearly instead of applying a partial profile.
+
 ## [v2.9.2] — 2026-08-31
 
 ### Fixed
