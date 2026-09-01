@@ -4,6 +4,14 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- `// mutator-disable-regexp` directives now match the final line of a source file even when the file has no trailing newline.
+- The `std` target pattern now resolves standard-library packages from `$GOROOT/src`.
+- Coverage resolution is deterministic when relative file paths collide by suffix; the longest, most specific path now wins.
+- `--git-diff-lines` path resolution is deterministic when diff paths collide by suffix; the longest, most specific path now wins.
+
 ## [v2.9.1] — 2026-08-27
 
 ### Fixed
