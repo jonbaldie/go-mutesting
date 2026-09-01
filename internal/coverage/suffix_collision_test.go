@@ -9,7 +9,7 @@ import (
 // against module-relative keys with a path-suffix test while iterating a Go
 // map (random order). When one relPath is a path-suffix of another
 // (foo/bar.go vs bar.go), both match and the winner was random — and the
-// wrong match was cached in resolved, poisoning later lookups.
+// wrong key was chosen and cached in resolved, poisoning later lookups.
 //
 // The fix chooses the longest (most specific) matching key deterministically.
 // This test runs many fresh prefixes (defeating the cache) and asserts the

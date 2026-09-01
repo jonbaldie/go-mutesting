@@ -66,7 +66,7 @@ func longestSuffixKey[V any](absFile string, m map[string]V) string {
 	return best
 }
 
-// IsCovered reports whether the given absolute file path and line number are
+// IsCovered reports whether the given absolute file path and line number is
 // reached by any test. The match uses the relative path suffix of absFile
 // against the module-relative keys stored in the profile.
 //
