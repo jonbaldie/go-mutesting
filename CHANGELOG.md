@@ -4,6 +4,15 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
+## [v2.9.4] — 2026-09-03
+
+### Fixed
+- AST identifier extractor no longer generates invalid blank assignments (`_ = ...`) for interface or non-composite type selectors in type assertions and conversions.
+- Quality gate evaluations (`--min-msi` and `--min-covered-msi`) now use an epsilon tolerance to prevent false gate failures caused by floating-point precision inaccuracies.
+- `loop/break` mutator now scopes mutations strictly to loops, ignoring `break` statements inside top-level `switch` or `select` blocks that would otherwise produce invalid `continue` statements.
+- Baseline `MutantID` now preserves decrement (`--`) and pre-increment (`++`) expressions by requiring a space in diff header checks (`--- ` and `+++ `).
+- `expression/string-literal` mutator no longer generates equivalent mutants for empty raw string literals (``` `` ```).
+
 ## [v2.9.3] — 2026-09-01
 
 ### Fixed
@@ -522,3 +531,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.9.1]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.0...v2.9.1
 [v2.9.2]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.1...v2.9.2
 [v2.9.3]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.2...v2.9.3
+[v2.9.4]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.3...v2.9.4
