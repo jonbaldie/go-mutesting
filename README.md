@@ -37,6 +37,7 @@ Beyond finding escaped mutants, go-mutesting can enforce quality gates in CI —
 
 ```bash
 go install github.com/jonbaldie/go-mutesting/v2/cmd/go-mutesting@latest
+go-mutesting --version
 ```
 
 Full documentation: https://jonbaldie.github.io/go-mutesting/

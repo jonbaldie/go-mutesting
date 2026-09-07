@@ -36,6 +36,7 @@ Targets can be Go source files, directories, or import paths. The `...` wildcard
 | `--logger-summary-json` | Write compact stats to `go-mutesting-summary.json` |
 | `--logger-agentic-json` | Write LLM-ready report to `go-mutesting-agentic.json` |
 | `--run-mutant-id` | Run only the mutant with this stable ID (copy the `id` field from `go-mutesting-agentic.json`) |
+| `--version`, `-v` | Print version and exit 0 |
 
 ## Quality gates
 
