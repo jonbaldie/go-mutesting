@@ -4,6 +4,16 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
+## [v2.10.3] — 2026-09-08
+
+### Fixed
+- `--coverage` no longer skips mutations inside package-level `const`/`var`/`type` declarations as NOT COVERED (replicate mutago #83). Go's coverage profile never instruments such non-executable declarations, so their mutations were wrongly filtered even when a test asserted the exact value and would KILL them. They are now always executed and scored.
+- `--coverage` now resolves coverage for `//line`-directive positions (replicate mutago #84). The profile records directive-shifted lines under the directive's filename (or `.`), not the physical file, so covered mutations on shifted lines were classified NOT COVERED and skipped, understating MSI. The lookup now consults the directive-adjusted filename and falls back to a line-anywhere search when the position was directive-shifted.
+- A broken (non-compiling) package no longer reports a false-green 100% MSI (replicate mutago #85). A baseline pre-flight check now runs by default: the unmutated suite is run once first and the tool exits with a tool error (3) if it fails. The `--noop` flag is now a no-op (kept for backward compatibility); the check is skipped under `--coverage`, `--no-exec`, `--dry-run`, or a custom `--exec`.
+
+### Changed
+- The `--noop` flag no longer enables the baseline check; it is always on for normal runs and the flag is kept for backward compatibility only.
+
 ## [v2.10.2] — 2026-09-08
 
 ### Fixed
@@ -570,4 +580,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.10.0]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.5...v2.10.0
 [v2.10.1]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.0...v2.10.1
 [v2.10.2]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.1...v2.10.2
+[v2.10.3]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.2...v2.10.3
 

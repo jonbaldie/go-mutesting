@@ -670,3 +670,28 @@ func TestBuildPerTestProfile_SingleTestPackage(t *testing.T) {
 	}
 	assert.True(t, found, "profile must contain coverage data for mutator.go")
 }
+
+func TestIsLineCoveredAnywhere_HitAndMiss(t *testing.T) {
+	// A single-file profile so the range loop must run its body to find a hit.
+	p := &Profile{coveredLines: map[string]map[int]bool{
+		"pkg/a.go": {1: true, 5: false},
+	}}
+	// Hit: line 1 is recorded covered — must return true (kills statement/return
+	// of the `return true` and a loop that skips its body).
+	assert.True(t, p.IsLineCoveredAnywhere(1))
+	// Miss: line 5 is present but false, line 99 absent — both must return false
+	// (kills a removed `if lines[line]` guard, which would wrongly return true).
+	assert.False(t, p.IsLineCoveredAnywhere(5))
+	assert.False(t, p.IsLineCoveredAnywhere(99))
+}
+
+func TestIsLineCoveredAnywhere_NonPositiveShortCircuits(t *testing.T) {
+	// line <= 0 returns false before scanning the map, even when line 0 itself
+	// is recorded as covered. This kills the `<=` comparison, its negation, the
+	// `0` literal mutations, and removal of the guard's `return false`.
+	p := &Profile{coveredLines: map[string]map[int]bool{
+		"pkg/a.go": {0: true, 1: true},
+	}}
+	assert.False(t, p.IsLineCoveredAnywhere(0))
+	assert.False(t, p.IsLineCoveredAnywhere(-1))
+}
