@@ -9,6 +9,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 ### Fixed
 - `expression/recover-clear`: rewrite `recover()` to `func() any { return nil }()` instead of `any(nil)`, preventing invalid Go type conversion compile errors in `defer` and `go` statements that caused unexercised mutations to be falsely reported as killed.
 
+## [v2.10.0] — 2026-09-07
+
+### Added
+- `--version` (`-v`) CLI flag to print go-mutesting version and exit 0.
+- Production (`Dockerfile`) and development (`dev.Dockerfile`) Dockerfiles.
+
 ## [v2.9.5] — 2026-09-03
 
 ### Fixed
@@ -548,5 +554,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.9.3]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.2...v2.9.3
 [v2.9.4]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.3...v2.9.4
 [v2.9.5]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.4...v2.9.5
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.5...HEAD
+[v2.10.0]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.5...v2.10.0
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.0...HEAD
 
