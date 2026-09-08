@@ -30,7 +30,7 @@ Beyond finding escaped mutants, go-mutesting can enforce quality gates in CI —
 | Quiet mode — suppress killed/skip noise | `--quiet` |
 | Suppress diff output | `--no-diffs` |
 | Dry-run mode — count mutations without running tests | `--dry-run` |
-| Pre-flight check — fail fast if tests already broken | `--noop` |
+| Baseline pre-flight check — fail fast if tests already broken | default (was `--noop`) |
 | Fail on any escape without a score threshold | `--fail-on-escaped` |
 | Run a single mutant by stable ID | `--run-mutant-id` |
 | Scale per-mutation timeout by baseline run time | `--timeout-coefficient` |
@@ -260,7 +260,7 @@ go-mutesting --coverage --min-msi 50 --min-covered-msi 75 ./...
 
 The final summary includes a per-mutator breakdown so you can see which mutation types your tests are weakest against.
 
-Use `--noop` to run the test suite once without any mutations first. If the clean suite already fails, go-mutesting exits immediately rather than producing meaningless results.
+By default go-mutesting runs the test suite once without any mutations first (the baseline pre-flight check). If the clean suite already fails — the package does not compile, or a test is red — go-mutesting exits immediately with a tool error (exit 3) rather than producing meaningless results. The `--noop` flag is kept for backward compatibility but has no effect; the check is always on for normal runs (it is skipped under `--coverage`, `--no-exec`, `--dry-run`, or a custom `--exec`).
 
 Use `--timeout-coefficient` to scale the per-mutation timeout relative to an uncached baseline test-suite run (e.g. `--timeout-coefficient 3` allows each mutation up to 3× the clean run). More reliable than a fixed `--exec-timeout` on machines with variable load. Built-in Go test runs add `-count=1` unless you set `-count` yourself; its value must be positive.
 
