@@ -4,9 +4,10 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [v2.10.1] — 2026-09-08
 
 ### Fixed
+- `branch/if`, `branch/else`, and `branch/case`: emptying a terminating branch no longer yields a `missing return` compile error (replicate mutago #104). When the branch is part of the enclosing function's terminating statement, the mutant keeps a zero-value `return` so tests can still catch the no-op path instead of reporting a false kill.
 - `statement/return`, `expression/remove`, `composite/field-clear`, and `expression/error-guard`: prevent uncompilable mutants that leave local variables or imported packages unused (replicate mutago #105). `statement/return` now emits a preceding `_ = x` assignment when zeroing a return value that was the sole use of a local variable, and skips mutations that remove the only reference to an imported package in the file. `expression/remove`, `composite/field-clear`, and `expression/error-guard` skip operand, field, or condition mutations that would leave local variables or imports unused, eliminating false kills.
 - `astutil`: only initialize selector expressions as composite literals if the selector resolves to a type name (replicate mutago #97). Struct field selectors whose underlying types are composite (such as slice, map, array, or struct) are now preserved as ordinary value expressions (e.g. `_ = r.items` instead of `_ = r.items{}`), preventing uncompilable mutants that resulted in false kills.
 - Translate standard test runtime flags to `-test.` prefixed flags when executing compiled test binaries for `--per-test` coverage profiling (replicate mutago #98). Previously flags like `-count=1` or `-failfast` passed via `--test-flags` were forwarded without the mandatory `-test.` prefix, causing the test binary to exit with an error and silently breaking `--per-test` profiling.
@@ -559,5 +560,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.9.4]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.3...v2.9.4
 [v2.9.5]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.4...v2.9.5
 [v2.10.0]: https://github.com/jonbaldie/go-mutesting/compare/v2.9.5...v2.10.0
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.0...HEAD
+[v2.10.1]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.0...v2.10.1
 
