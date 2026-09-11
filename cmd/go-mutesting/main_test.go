@@ -18,6 +18,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestVersionFlag(t *testing.T) {
+	for _, flag := range []string{"--version", "-v"} {
+		t.Run(flag, func(t *testing.T) {
+			out := testMain(t, ".", []string{flag}, returnOk, "go-mutesting dev")
+			assert.Equal(t, "go-mutesting dev\n", out)
+		})
+	}
+}
+
 func TestMainSimple(t *testing.T) {
 	testMain(
 		t,
@@ -368,8 +377,80 @@ func TestMainTestFlagsPassthrough(t *testing.T) {
 }
 
 func TestMainCoverageUsesSingleBaselineForAdaptiveTimeout(t *testing.T) {
+	root, goLog := adaptiveTimeoutFixture(t, "example.com/adaptive")
+
+	testMain(
+		t,
+		root,
+		[]string{"--coverage", "--timeout-coefficient", "1", "--config", "go-mutesting.yml", "add.go"},
+		returnOk,
+		"mutation score",
+	)
+
+	cleanTestRuns := cleanGoTestRuns(t, goLog)
+	require.Len(t, cleanTestRuns, 1, "coverage should also provide the adaptive timeout baseline")
+	assert.Contains(t, cleanTestRuns[0], "-count=1", "adaptive timeout baseline must bypass the test cache")
+}
+
+func TestMainCoveragePassesTimeoutFlag(t *testing.T) {
+	root, goLog := adaptiveTimeoutFixture(t, "example.com/coveragetimeoutflag")
+
+	testMain(
+		t,
+		root,
+		[]string{"--coverage", "--exec-timeout", "7", "--config", "go-mutesting.yml", "add.go"},
+		returnOk,
+		"mutation score",
+	)
+
+	cleanTestRuns := cleanGoTestRuns(t, goLog)
+	require.NotEmpty(t, cleanTestRuns, "expected baseline test run")
+	assert.Contains(t, cleanTestRuns[0], "-timeout 7s", "coverage baseline must pass configured execution timeout")
+}
+
+func TestMainAdaptiveTimeoutBypassesTestCacheWithoutCoverage(t *testing.T) {
+	root, goLog := adaptiveTimeoutFixture(t, "example.com/adaptivenocoverage")
+
+	testMain(
+		t,
+		root,
+		[]string{"--timeout-coefficient", "1", "--config", "go-mutesting.yml", "add.go"},
+		returnOk,
+		"mutation score",
+	)
+
+	cleanTestRuns := cleanGoTestRuns(t, goLog)
+	var adaptiveBaselineRuns []string
+	for _, run := range cleanTestRuns {
+		if strings.Contains(run, "-timeout 300s") {
+			adaptiveBaselineRuns = append(adaptiveBaselineRuns, run)
+		}
+	}
+	require.Len(t, adaptiveBaselineRuns, 1)
+	assert.Contains(t, adaptiveBaselineRuns[0], "-count=1", "adaptive timeout baseline must bypass the test cache")
+}
+
+func TestMainAdaptiveTimeoutPreservesPositiveTestCount(t *testing.T) {
+	root, goLog := adaptiveTimeoutFixture(t, "example.com/adaptivecount")
+
+	testMain(
+		t,
+		root,
+		[]string{"--coverage", "--timeout-coefficient", "1", "--test-flags=-count=2", "--config", "go-mutesting.yml", "add.go"},
+		returnOk,
+		"mutation score",
+	)
+
+	cleanTestRuns := cleanGoTestRuns(t, goLog)
+	require.Len(t, cleanTestRuns, 1)
+	assert.Contains(t, cleanTestRuns[0], "-count=2")
+	assert.NotContains(t, cleanTestRuns[0], "-count=1")
+}
+
+func adaptiveTimeoutFixture(t *testing.T, modulePath string) (string, string) {
+	t.Helper()
 	root := t.TempDir()
-	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/adaptive\n\ngo 1.26.5\n")
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module "+modulePath+"\n\ngo 1.26.5\n")
 	writeFixtureFile(t, filepath.Join(root, "add.go"), `package adaptive
 
 func Add(a, b int) int { return a + b }
@@ -400,24 +481,88 @@ exec "$GO_MUTESTING_REAL_GO" "$@"
 	t.Setenv("GO_MUTESTING_GO_TEST_LOG", goLog)
 	t.Setenv("GO_MUTESTING_REAL_GO", realGo)
 	t.Setenv("PATH", filepath.Dir(goWrapper)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return root, goLog
+}
+
+func cleanGoTestRuns(t *testing.T, goLog string) []string {
+	t.Helper()
+	log, err := os.ReadFile(goLog)
+	require.NoError(t, err)
+	var cleanTestRuns []string
+	for _, line := range strings.Split(string(log), "\n") {
+		if strings.HasPrefix(line, "test ") && !strings.Contains(line, "-overlay=") {
+			cleanTestRuns = append(cleanTestRuns, line)
+		}
+	}
+	return cleanTestRuns
+}
+
+func TestMainAdaptiveTimeoutRejectsZeroTestCount(t *testing.T) {
+	testMain(
+		t,
+		"../../example",
+		[]string{"--coverage", "--timeout-coefficient", "1", "--test-flags=-count=0"},
+		returnError,
+		"adaptive timeout requires a positive test count",
+	)
+}
+
+func TestMainCoverageFailureStopsMutationRun(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/coveragefailure\n\ngo 1.26.5\n")
+	writeFixtureFile(t, filepath.Join(root, "value.go"), `package coveragefailure
+
+func Value() int { return 1 }
+`)
+	writeFixtureFile(t, filepath.Join(root, "value_test.go"), `package coveragefailure
+
+import "testing"
+
+func TestValue(t *testing.T) {
+	_ = Value()
+	t.Fatal("clean test failure")
+}
+`)
+	writeFixtureFile(t, filepath.Join(root, "go-mutesting.yml"), "enable_mutators:\n  - numbers/incrementer\n")
 
 	testMain(
 		t,
 		root,
-		[]string{"--coverage", "--timeout-coefficient", "1", "--config", "go-mutesting.yml", "add.go"},
-		returnOk,
-		"mutation score",
+		[]string{"--coverage", "--config", "go-mutesting.yml", "value.go"},
+		returnError,
+		"coverage test failed",
 	)
+}
 
-	log, err := os.ReadFile(goLog)
-	require.NoError(t, err)
-	cleanTestRuns := 0
-	for _, line := range strings.Split(string(log), "\n") {
-		if strings.HasPrefix(line, "test ") && !strings.Contains(line, "-overlay=") {
-			cleanTestRuns++
-		}
-	}
-	assert.Equal(t, 1, cleanTestRuns, "coverage should also provide the adaptive timeout baseline")
+func TestMainCoverageTimeoutFailsFast(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/coveragetimeout\n\ngo 1.26.5\n")
+	writeFixtureFile(t, filepath.Join(root, "value.go"), `package coveragetimeout
+
+func Value() int { return 1 }
+`)
+	writeFixtureFile(t, filepath.Join(root, "value_test.go"), `package coveragetimeout
+
+import (
+	"testing"
+	"time"
+)
+
+func TestValue(t *testing.T) {
+	time.Sleep(2 * time.Second)
+	_ = Value()
+}
+`)
+	writeFixtureFile(t, filepath.Join(root, "go-mutesting.yml"), "enable_mutators:\n  - numbers/incrementer\n")
+
+	out := testMain(
+		t,
+		root,
+		[]string{"--exec-timeout", "1", "--coverage", "--config", "go-mutesting.yml", "value.go"},
+		returnError,
+		"coverage test failed",
+	)
+	assert.Contains(t, out, "panic: test timed out")
 }
 
 func TestMainPerTestFlag(t *testing.T) {
@@ -554,6 +699,123 @@ func TestJitter(t *testing.T) {
 
 	out := testMain(t, root, []string{"--exec-timeout", "5"}, returnOk, "mutation score")
 	assert.NotContains(t, out, "INTERNAL ERROR")
+}
+
+func TestMainRecoverClearDeferCompilesAndEscapesWhenUntested(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/repro\n\ngo 1.26.5\n")
+	writeFixtureFile(t, filepath.Join(root, "go-mutesting.yml"), "enable_mutators:\n  - expression/recover-clear\n")
+	writeFixtureFile(t, filepath.Join(root, "repro.go"), `package repro
+
+func Safe() {
+	defer recover()
+}
+`)
+	writeFixtureFile(t, filepath.Join(root, "repro_test.go"), `package repro
+
+import "testing"
+
+func TestUnrelated(t *testing.T) {
+}
+`)
+
+	out := testMain(t, root, []string{"--config", filepath.Join(root, "go-mutesting.yml"), "--exec-timeout", "5"}, returnOk, "mutation score")
+	assert.Contains(t, out, "ESCAPED")
+	assert.NotContains(t, out, "KILLED")
+	assert.Contains(t, out, "0 killed, 1 escaped")
+}
+
+func TestMainUnusedVariablesCompileAndDoNotFalseKill(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/repro\n\ngo 1.26.5\n")
+	writeFixtureFile(t, filepath.Join(root, "go-mutesting.yml"), `enable_mutators:
+  - statement/return
+  - composite/field-clear
+  - expression/remove
+  - expression/error-guard
+`)
+	writeFixtureFile(t, filepath.Join(root, "repro.go"), `package repro
+
+import "strings"
+
+type P struct{ Name string }
+
+func Ret(a int) int {
+	b := a * 2
+	return b
+}
+
+func Field(name string) P {
+	n := strings.TrimSpace(name)
+	return P{Name: n}
+}
+
+func ExprRemove(s string) bool {
+	b := len(s) > 0
+	return b && len(s) < 100
+}
+
+func Guard() error {
+	err := check()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func GuardOnlyUse() {
+	err := check()
+	if err != nil {
+		println("error happened")
+	}
+}
+
+func check() error { return nil }
+`)
+	writeFixtureFile(t, filepath.Join(root, "repro_test.go"), `package repro
+
+import "testing"
+
+func TestUnrelated(t *testing.T) {
+}
+`)
+
+	out := testMain(t, root, []string{"--config", filepath.Join(root, "go-mutesting.yml"), "--exec-timeout", "5"}, returnOk, "mutation score")
+	assert.NotContains(t, out, "KILLED")
+}
+
+func TestMainTerminatingBranchMutantsCompileAndDoNotFalseKill(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/term\n\ngo 1.26.5\n")
+	writeFixtureFile(t, filepath.Join(root, "go-mutesting.yml"), `enable_mutators:
+  - branch/if
+  - branch/else
+  - branch/case
+`)
+	writeFixtureFile(t, filepath.Join(root, "t.go"), `package term
+
+func IfElse(c bool) int {
+	if c {
+		return 1
+	} else {
+		return 2
+	}
+}
+
+func Switch(n int) string {
+	switch n {
+	case 1:
+		return "one"
+	default:
+		return "other"
+	}
+}
+`)
+	writeFixtureFile(t, filepath.Join(root, "t_test.go"), "package term\n")
+
+	out := testMain(t, root, []string{"--config", filepath.Join(root, "go-mutesting.yml"), "--exec-timeout", "5"}, returnOk, "mutation score")
+	assert.Contains(t, out, "ESCAPED")
+	assert.NotContains(t, out, "KILLED")
 }
 
 func testMain(t *testing.T, root string, exec []string, expectedExitCode int, contains string) string {

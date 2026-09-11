@@ -21,7 +21,12 @@ func bare() {
 	panic("boom")
 }
 
+func direct() {
+	defer recover()
+}
+
 func main() {
 	guarded()
 	bare()
+	direct()
 }

@@ -6,8 +6,8 @@ type Options struct {
 		Debug                bool   `long:"debug" description:"Debug log output"`
 		DoNotRemoveTmpFolder bool   `long:"do-not-remove-tmp-folder" description:"Do not remove the tmp folder where all mutations are saved to"`
 		Help                 bool   `long:"help" description:"Show this help message"`
-		Noop                 bool   `long:"noop" description:"Run the test suite once without any mutations first; exit with an error if it fails"`
-		DryRun               bool   `long:"dry-run" description:"Count mutations per file and mutator without generating files or running tests; prints a summary table and exits 0. The count is an upper bound — identical mutations across files are deduplicated in a real run."`
+		Noop                 bool   `long:"noop" description:"No-op: the baseline test check (run the suite once unmutated first, exit with an error if it fails) is now always on by default. This flag is kept for backward compatibility and has no effect."`
+		DryRun               bool   `long:"dry-run" description:"Count mutations per file and mutator without generating files or running tests; prints a summary table and exits 0. The count is an upper bound — mutations that produce byte-identical edits at the same location are deduplicated in a real run."`
 		NoDiffs              bool   `long:"no-diffs" description:"Suppress diff output for all mutation results (useful in CI where diffs are noisy and the JSON report is consumed instead)"`
 		OutputStatuses       string `long:"output-statuses" description:"Show only these result statuses in the terminal: k=killed e=escaped s=skipped n=not-covered x=errored (e.g. --output-statuses=ke). Does not affect JSON reports. Overrides --quiet when set."`
 		Quiet                bool   `long:"quiet" description:"Only print escaped mutants and the summary (suppress killed/skipped output). Combine with --no-diffs to also suppress escaped-mutant diffs."`
@@ -15,6 +15,7 @@ type Options struct {
 		Workers              int    `long:"workers" description:"Number of parallel workers for mutation execution (0 = all CPUs). Forced to 1 when --exec is set." default:"0"`
 		Config               string `long:"config" description:"Path to config file"`
 		HTMLOutput           bool   `long:"html-output" description:"Generates a go-mutesting-report.html file after testing is complete"`
+		Version              bool   `long:"version" short:"v" description:"Show version"`
 	} `group:"General options"`
 
 	Files struct {
@@ -40,7 +41,7 @@ type Options struct {
 		Coverage           bool    `long:"coverage" description:"Run go test -coverprofile before mutating to compute covered-code MSI and mark uncovered mutants"`
 		PerTest            bool    `long:"per-test" description:"Build a per-test coverage map and run only covering tests for each mutation. Fastest on packages with slow tests; pairs well with --coverage."`
 		TestFlags          string  `long:"test-flags" description:"Extra flags passed to each 'go test' invocation. Use the = form to pass flag values: --test-flags='-short'. Ignored when --exec is set."`
-		TimeoutCoefficient float64 `long:"timeout-coefficient" description:"Set per-mutation timeout as a multiple of the baseline test-suite run time (e.g. 3 = 3× the clean run). Overrides --exec-timeout when > 0." default:"0"`
+		TimeoutCoefficient float64 `long:"timeout-coefficient" description:"Set per-mutation timeout as a multiple of an uncached baseline test-suite run (e.g. 3 = 3× the clean run). Overrides --exec-timeout when > 0." default:"0"`
 	} `group:"Exec options"`
 
 	// GitDiff limits mutation to lines changed since a git base ref.

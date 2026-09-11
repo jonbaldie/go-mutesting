@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"go/types"
 
+	"github.com/jonbaldie/go-mutesting/v2/astutil"
 	"github.com/jonbaldie/go-mutesting/v2/mutator"
 )
 
@@ -15,99 +16,96 @@ func init() {
 // MutatorReturnValue replaces each non-zero return value with the zero value
 // for its type (false, 0, "", nil, TypeName{}).
 func MutatorReturnValue(pkg *types.Package, info *types.Info, node ast.Node) []mutator.Mutation {
-	n, ok := node.(*ast.ReturnStmt)
-	if !ok || len(n.Results) == 0 || info == nil {
+	if info == nil {
+		return nil
+	}
+
+	l, setStmts := stmtListAndSetter(node)
+	if l == nil {
 		return nil
 	}
 
 	var mutations []mutator.Mutation
-
-	for i, result := range n.Results {
-		t := info.TypeOf(result)
-		if t == nil {
-			continue
-		}
-
-		zero := zeroExprForType(t, pkg)
-		if zero == nil {
-			continue
-		}
-
-		if isAlreadyZero(result) {
-			continue
-		}
-
-		idx := i
-		original := n.Results[idx]
-
-		mutations = append(mutations, mutator.Mutation{
-			Position: original.Pos(),
-			Change:   func() { n.Results[idx] = zero },
-			Reset:    func() { n.Results[idx] = original },
-		})
+	for stmtIdx := range l {
+		mutations = append(mutations, mutateReturnStmt(pkg, info, l, stmtIdx, setStmts)...)
 	}
-
 	return mutations
 }
 
-// zeroExprForType returns the zero-value AST expression for t as seen from
-// currentPkg. Named struct types produce TypeName{} (or pkg.TypeName{} for
-// imported types). All other types follow the same rules as before.
-func zeroExprForType(t types.Type, currentPkg *types.Package) ast.Expr {
-	switch u := t.(type) {
-	case *types.Basic:
-		return zeroExprForBasic(u)
-	case *types.Pointer, *types.Slice, *types.Map, *types.Chan, *types.Interface, *types.Signature:
-		return ast.NewIdent("nil")
-	case *types.Named:
-		return zeroExprForNamed(u, currentPkg)
+func stmtListAndSetter(node ast.Node) ([]ast.Stmt, func([]ast.Stmt)) {
+	switch n := node.(type) {
+	case *ast.BlockStmt:
+		return n.List, func(stmts []ast.Stmt) { n.List = stmts }
+	case *ast.CaseClause:
+		return n.Body, func(stmts []ast.Stmt) { n.Body = stmts }
+	case *ast.CommClause:
+		return n.Body, func(stmts []ast.Stmt) { n.Body = stmts }
+	default:
+		return nil, nil
 	}
-	return nil
 }
 
-// zeroExprForBasic returns the zero-value expression for a basic type.
-func zeroExprForBasic(u *types.Basic) ast.Expr {
-	switch {
-	case u.Kind() == types.Bool:
-		return ast.NewIdent("false")
-	case u.Info()&types.IsString != 0:
-		return &ast.BasicLit{Kind: token.STRING, Value: `""`}
-	case u.Info()&types.IsNumeric != 0:
-		return &ast.BasicLit{Kind: token.INT, Value: "0"}
-	case u.Kind() == types.UnsafePointer:
-		return ast.NewIdent("nil")
-	}
-	return nil
-}
-
-// zeroExprForNamed returns the zero-value expression for a named type. Named
-// struct types produce TypeName{} (or pkg.TypeName{} for imported types);
-// other named types fall back to the zero value of their underlying type.
-func zeroExprForNamed(u *types.Named, currentPkg *types.Package) ast.Expr {
-	// Skip generic types (TypeParams present) — the instantiation syntax is
-	// complex and rarely worth mutating.
-	if u.TypeParams() != nil {
+func mutateReturnStmt(pkg *types.Package, info *types.Info, l []ast.Stmt, stmtIdx int, setStmts func([]ast.Stmt)) []mutator.Mutation {
+	ret, ok := l[stmtIdx].(*ast.ReturnStmt)
+	if !ok || len(ret.Results) == 0 {
 		return nil
 	}
-	if _, ok := u.Underlying().(*types.Struct); !ok {
-		return zeroExprForType(u.Underlying(), currentPkg)
+
+	var mutations []mutator.Mutation
+	for resIdx := range ret.Results {
+		if m, ok := mutateReturnResult(pkg, info, l, stmtIdx, ret, resIdx, setStmts); ok {
+			mutations = append(mutations, m)
+		}
 	}
-	return &ast.CompositeLit{Type: structTypeExpr(u.Obj(), currentPkg)}
+	return mutations
 }
 
-// structTypeExpr builds the type expression used in a named struct's zero
-// literal: TypeName for types in currentPkg, pkg.TypeName for imported types.
-func structTypeExpr(obj *types.TypeName, currentPkg *types.Package) ast.Expr {
-	if obj.Pkg() == nil {
-		return ast.NewIdent(obj.Name())
+func mutateReturnResult(pkg *types.Package, info *types.Info, l []ast.Stmt, stmtIdx int, ret *ast.ReturnStmt, resIdx int, setStmts func([]ast.Stmt)) (mutator.Mutation, bool) {
+	result := ret.Results[resIdx]
+	t := info.TypeOf(result)
+	if t == nil {
+		return mutator.Mutation{}, false
 	}
-	if currentPkg != nil && obj.Pkg().Path() == currentPkg.Path() {
-		return ast.NewIdent(obj.Name())
+
+	zero := astutil.ZeroExprForType(t, pkg)
+	if zero == nil || isAlreadyZero(result) || astutil.HasUnsafeImport(info, result) {
+		return mutator.Mutation{}, false
 	}
-	return &ast.SelectorExpr{
-		X:   ast.NewIdent(obj.Pkg().Name()),
-		Sel: ast.NewIdent(obj.Name()),
+
+	unsafeVars := astutil.UnsafeLocalVars(info, result)
+	if len(unsafeVars) == 0 {
+		orig := result
+		idx := resIdx
+		return mutator.Mutation{
+			Position: orig.Pos(),
+			Change:   func() { ret.Results[idx] = zero },
+			Reset:    func() { ret.Results[idx] = orig },
+		}, true
 	}
+
+	noop := astutil.CreateNoopOfExpressions(unsafeVars, ret.Pos())
+	newRet := cloneReturnWithZero(ret, resIdx, zero)
+	mutatedList := make([]ast.Stmt, len(l)+1)
+	copy(mutatedList[:stmtIdx], l[:stmtIdx])
+	mutatedList[stmtIdx] = noop
+	mutatedList[stmtIdx+1] = newRet
+	copy(mutatedList[stmtIdx+2:], l[stmtIdx+1:])
+
+	return mutator.Mutation{
+		Position: result.Pos(),
+		Change:   func() { setStmts(mutatedList) },
+		Reset:    func() { setStmts(l) },
+	}, true
+}
+
+func cloneReturnWithZero(ret *ast.ReturnStmt, zeroIdx int, zero ast.Expr) *ast.ReturnStmt {
+	newRet := &ast.ReturnStmt{
+		Return:  ret.Return,
+		Results: make([]ast.Expr, len(ret.Results)),
+	}
+	copy(newRet.Results, ret.Results)
+	newRet.Results[zeroIdx] = zero
+	return newRet
 }
 
 // isAlreadyZero reports whether expr is already a zero-value literal,
@@ -128,7 +126,7 @@ func isAlreadyZero(expr ast.Expr) bool {
 			}
 		case token.STRING:
 			switch n.Value {
-			case `""`:
+			case `""`, "``":
 				return true
 			}
 		}

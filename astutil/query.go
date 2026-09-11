@@ -49,6 +49,7 @@ var identifierIndexes sync.Map
 // ClearIdentifierCache releases per-type-check identifier indexes between runs.
 func ClearIdentifierCache() {
 	identifierIndexes = sync.Map{}
+	ClearSafetyCache()
 }
 
 func (idx *identifierIndex) query(info *types.Info, stmts []ast.Stmt) []ast.Expr {
@@ -98,8 +99,11 @@ func cloneIdentifierEvent(info *types.Info, expr ast.Expr) ast.Expr {
 	case *ast.Ident:
 		return &ast.Ident{Name: expr.Name}
 	case *ast.SelectorExpr:
+		if isUnusableSelector(info, expr) {
+			return nil
+		}
 		selector := cloneSelector(expr)
-		if (&identifierWalker{info: info}).shouldInitialize(expr) {
+		if shouldInitializeSelector(info, expr) {
 			return &ast.CompositeLit{Type: selector}
 		}
 		return selector
@@ -137,7 +141,7 @@ func (idx *identifierIndex) collectNode(info *types.Info, node ast.Node) bool {
 }
 
 func (idx *identifierIndex) collectSelector(info *types.Info, selector *ast.SelectorExpr) bool {
-	if selector.Sel == nil || !checkForSelectorExpr(selector) {
+	if selector.Sel == nil || !checkForSelectorExpr(selector) || isUnusableSelector(info, selector) {
 		return true
 	}
 	if _, seen := idx.seenNodes[selector]; seen {
@@ -272,7 +276,7 @@ func (w *identifierWalker) visitIdent(n *ast.Ident) ast.Visitor {
 // visitSelector records selector expressions, wrapping composite types in a
 // composite literal so they can be instantiated.
 func (w *identifierWalker) visitSelector(n *ast.SelectorExpr) ast.Visitor {
-	if n.Sel == nil || !checkForSelectorExpr(n) {
+	if n.Sel == nil || !checkForSelectorExpr(n) || isUnusableSelector(w.info, n) {
 		return w
 	}
 	if root := selectorRoot(n); root != nil {
@@ -325,12 +329,20 @@ func cloneSelector(n *ast.SelectorExpr) *ast.SelectorExpr {
 // shouldInitialize reports whether the selector refers to a composite type
 // (array, map, slice, or struct) that needs a composite literal.
 func (w *identifierWalker) shouldInitialize(n *ast.SelectorExpr) bool {
-	if n.Sel == nil {
+	return shouldInitializeSelector(w.info, n)
+}
+
+func shouldInitializeSelector(info *types.Info, n *ast.SelectorExpr) bool {
+	if n == nil || n.Sel == nil || info == nil {
 		return false
 	}
 
-	obj, ok := w.info.Uses[n.Sel]
+	obj, ok := info.Uses[n.Sel]
 	if !ok {
+		return false
+	}
+
+	if _, isType := obj.(*types.TypeName); !isType {
 		return false
 	}
 
@@ -339,6 +351,20 @@ func (w *identifierWalker) shouldInitialize(n *ast.SelectorExpr) bool {
 		return true
 	}
 
+	return false
+}
+
+func isUnusableSelector(info *types.Info, n *ast.SelectorExpr) bool {
+	if n == nil || n.Sel == nil || info == nil {
+		return false
+	}
+	obj, ok := info.Uses[n.Sel]
+	if !ok {
+		return false
+	}
+	if _, isType := obj.(*types.TypeName); isType {
+		return !shouldInitializeSelector(info, n)
+	}
 	return false
 }
 

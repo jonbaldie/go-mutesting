@@ -9,6 +9,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,6 +90,30 @@ func TestMutationEditMaterializesChangedNode(t *testing.T) {
 	}
 	if string(got) != "package sample\nvar value = 2\n" {
 		t.Fatalf("unexpected mutation: %q", got)
+	}
+}
+
+func TestStableMutationEditKeyIsPositionAware(t *testing.T) {
+	source := []byte("package sample\n\nfunc a() int { return 0 }\n\nfunc b() int { return 0 }\n")
+	editA := mutationEdit{start: 32, end: 33, replacement: []byte("1")}
+	editB := mutationEdit{start: 61, end: 62, replacement: []byte("1")}
+
+	keyA := stableMutationEditKey("sample.go", source, editA)
+	keyB := stableMutationEditKey("sample.go", source, editB)
+	if keyA == keyB {
+		t.Fatal("expected identical text at different offsets to produce different dedup keys")
+	}
+	if again := stableMutationEditKey("sample.go", source, editA); again != keyA {
+		t.Fatal("expected the same edit to produce the same dedup key")
+	}
+	if keyA != stableMutationEditKey("sample.go", source, mutationEdit{start: 32, end: 33, replacement: []byte("1")}) {
+		t.Fatal("expected an equal edit at the same offset to produce an equal dedup key")
+	}
+	if keyA == stableMutationEditKey("other.go", source, editA) {
+		t.Fatal("expected the same edit in a different file to produce a different dedup key")
+	}
+	if len(keyA) != 32 {
+		t.Fatalf("expected 32-char MD5 hex key for blacklist compatibility, got %d chars", len(keyA))
 	}
 }
 
@@ -230,6 +255,65 @@ func TestEngineCoverageHonorsTestFlags(t *testing.T) {
 	}
 }
 
+// TestEngineCoverageTimeoutFailsBaseline ensures --coverage passes the execution timeout
+// to the initial coverage collection step and fails fast if the unmutated test suite times out.
+func TestEngineCoverageTimeoutFailsBaseline(t *testing.T) {
+	_ = os.MkdirAll("./testdata", 0755)
+	tempDir, err := os.MkdirTemp("./testdata", "covtimeout-*")
+	if err != nil {
+		t.Fatalf("failed to create temp package: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	src := `package covtimeout
+
+func Foo() int { return 42 }
+`
+	testSrc := `package covtimeout
+
+import (
+	"testing"
+	"time"
+)
+
+func TestFoo(t *testing.T) {
+	time.Sleep(2 * time.Second)
+	_ = Foo()
+}
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg.go"), []byte(src), 0644); err != nil {
+		t.Fatalf("failed to write pkg.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg_test.go"), []byte(testSrc), 0644); err != nil {
+		t.Fatalf("failed to write pkg_test.go: %v", err)
+	}
+
+	opts := &models.Options{}
+	opts.Exec.Coverage = true
+	opts.Exec.Timeout = 1
+	opts.Remaining.Targets = []string{tempDir}
+
+	var stdout, stderr bytes.Buffer
+	e := &Engine{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}
+
+	res, err := e.Run(context.Background(), opts, nil)
+	if err == nil {
+		t.Fatal("expected baseline coverage timeout to return error, got nil")
+	}
+	if res.ExitCode != 3 {
+		t.Fatalf("expected exit code 3 on baseline coverage timeout, got %d", res.ExitCode)
+	}
+	if !strings.Contains(err.Error(), "coverage test failed") {
+		t.Fatalf("expected error to contain 'coverage test failed', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("expected error to mention 'timed out', got: %v", err)
+	}
+}
+
 // TestEngineCoverageSkipsExecForUncoveredMutants ensures --coverage does not run
 // the exec command for mutants on uncovered lines.
 func TestEngineCoverageSkipsExecForUncoveredMutants(t *testing.T) {
@@ -309,5 +393,320 @@ func TestCovered(t *testing.T) {
 	if int64(execCount) != scored {
 		t.Fatalf("exec ran for not-covered mutants: exec=%d scored=%d notCovered=%d total=%d stdout=%q stderr=%q",
 			execCount, scored, stats.NotCoveredCount, stats.TotalMutantsCount, stdout.String(), stderr.String())
+	}
+}
+
+func TestCheckMsiGate_FloatPrecision(t *testing.T) {
+	// 29 out of 100 mutants killed = exactly 29.0%
+	report := &models.Report{
+		Stats: models.Stats{
+			TotalMutantsCount: 100,
+			KilledCount:       29,
+			EscapedCount:      71,
+			Msi:               29.0 / 100.0,
+		},
+	}
+	if checkMsiGate(report, 29.0) {
+		t.Fatalf("checkMsiGate failed for exact 29%% threshold")
+	}
+
+	// 28 out of 100 mutants killed = 28.0%, should fail 29.0% gate
+	reportBelow := &models.Report{
+		Stats: models.Stats{
+			TotalMutantsCount: 100,
+			KilledCount:       28,
+			EscapedCount:      72,
+			Msi:               28.0 / 100.0,
+		},
+	}
+	if !checkMsiGate(reportBelow, 29.0) {
+		t.Fatalf("checkMsiGate expected to fail for 28%% when min is 29%%")
+	}
+}
+
+func TestCheckCoveredMsiGate_FloatPrecision(t *testing.T) {
+	// 58 out of 100 covered mutants killed = exactly 58.0%
+	report := &models.Report{
+		HasCoverage: true,
+		Stats: models.Stats{
+			TotalMutantsCount: 100,
+			KilledCount:       58,
+			EscapedCount:      42,
+			CoveredCodeMsi:    58.0 / 100.0,
+		},
+	}
+	if checkCoveredMsiGate(report, 58.0) {
+		t.Fatalf("checkCoveredMsiGate failed for exact 58%% threshold")
+	}
+
+	// 57 out of 100 covered mutants killed = 57.0%, should fail 58.0% gate
+	reportBelow := &models.Report{
+		HasCoverage: true,
+		Stats: models.Stats{
+			TotalMutantsCount: 100,
+			KilledCount:       57,
+			EscapedCount:      43,
+			CoveredCodeMsi:    57.0 / 100.0,
+		},
+	}
+	if !checkCoveredMsiGate(reportBelow, 58.0) {
+		t.Fatalf("checkCoveredMsiGate expected to fail for 57%% when min is 58%%")
+	}
+}
+
+func vetArgs(args []string) []string {
+	vets := make([]string, 0, 2)
+	for _, arg := range args {
+		if arg == "-vet" || arg == "--vet" || strings.HasPrefix(arg, "-vet=") || strings.HasPrefix(arg, "--vet=") {
+			vets = append(vets, arg)
+		}
+	}
+	return vets
+}
+
+func TestMutantGoTestArgsDisablesVetByDefault(t *testing.T) {
+	args := mutantGoTestArgs("overlay.json", 60, nil, "", "example")
+	if got := vetArgs(args); len(got) != 1 || got[0] != "-vet=off" {
+		t.Fatalf("expected exactly one -vet argument (-vet=off), got %v in %v", got, args)
+	}
+}
+
+func TestMutantGoTestArgsUserVetWins(t *testing.T) {
+	args := mutantGoTestArgs("overlay.json", 60, []string{"-vet=atomic"}, "", "example")
+	if got := vetArgs(args); len(got) != 1 || got[0] != "-vet=atomic" {
+		t.Fatalf("user -vet must win with exactly one -vet argument, got %v in %v", got, args)
+	}
+}
+
+// TestEngineCoverageRunsConstMutations is a regression test for #83: numeric
+// literals in package-level const (and var) declarations are never recorded as
+// covered by `go test` coverage profiles, so --coverage wrongly skipped them
+// as NOT COVERED — even when a test asserts the exact value and would KILL
+// them. Such mutations must be executed (scored killed/escaped), not skipped.
+func TestEngineCoverageRunsConstMutations(t *testing.T) {
+	_ = os.MkdirAll("./testdata", 0755)
+	tempDir, err := os.MkdirTemp("./testdata", "constcov-*")
+	if err != nil {
+		t.Fatalf("failed to create temp package: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// `const Pi` is on line 3 of pkg.go; `Double` on line 5.
+	src := `package constcov
+
+const Pi = 3.14159
+
+func Double(x int) int { return x * 2 }
+`
+	testSrc := `package constcov
+
+import "testing"
+
+func TestPi(t *testing.T) {
+	if Pi != 3.14159 {
+		t.Fatalf("Pi=%f", Pi)
+	}
+}
+
+func TestDouble(t *testing.T) {
+	if Double(3) != 6 {
+		t.Fatalf("Double(3)=%d", Double(3))
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg.go"), []byte(src), 0644); err != nil {
+		t.Fatalf("failed to write pkg.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg_test.go"), []byte(testSrc), 0644); err != nil {
+		t.Fatalf("failed to write pkg_test.go: %v", err)
+	}
+
+	// Restrict to numbers mutators so the only mutations are the numeric
+	// literals in `const Pi` (line 3) and `Double` (line 5).
+	opts := &models.Options{}
+	opts.Exec.Coverage = true
+	opts.Exec.Timeout = 10
+	opts.Mutator.DisableMutators = []string{
+		"arithmetic/*", "branch/*", "composite/*", "concurrency/*", "conditional/*",
+		"expression/*", "loop/*", "select/*", "statement/*",
+	}
+	opts.Remaining.Targets = []string{"./" + tempDir}
+
+	var stdout, stderr bytes.Buffer
+	e := &Engine{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}
+	res, err := e.Run(context.Background(), opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Report == nil {
+		t.Fatal("expected report to be populated, got nil")
+	}
+
+	// Count how many mutants on the `const Pi` line (line 3) landed in each
+	// bucket. Before the fix all three float mutations on line 3 were NOT
+	// COVERED; they must instead be scored (killed here, since TestPi asserts
+	// the exact value).
+	const constLine = int64(3)
+	countByLine := func(muts []models.Mutant) int64 {
+		var n int64
+		for _, m := range muts {
+			if m.Mutator.OriginalStartLine == constLine {
+				n++
+			}
+		}
+		return n
+	}
+
+	if n := countByLine(res.Report.NotCovered); n != 0 {
+		t.Fatalf("const mutations must not be skipped as NOT COVERED; got %d on line %d (notCovered=%d killed=%d escaped=%d total=%d) stdout=%q stderr=%q",
+			n, constLine, res.Report.Stats.NotCoveredCount, res.Report.Stats.KilledCount, res.Report.Stats.EscapedCount, res.Report.Stats.TotalMutantsCount, stdout.String(), stderr.String())
+	}
+	if n := countByLine(res.Report.Killed); n < 2 {
+		t.Fatalf("expected at least 2 const mutations KILLED on line %d, got %d (notCovered=%d killed=%d escaped=%d total=%d) stdout=%q stderr=%q",
+			constLine, n, res.Report.Stats.NotCoveredCount, res.Report.Stats.KilledCount, res.Report.Stats.EscapedCount, res.Report.Stats.TotalMutantsCount, stdout.String(), stderr.String())
+	}
+}
+
+// TestEngineCoverageHonorsLineDirectives is a regression test for #84: a
+// //line directive shifts Go's coverage-profile line attribution to the
+// directive's line (and, for a named directive, its filename), while the tool
+// reported the mutation's line using the adjusted line but looked up coverage
+// using the physical file path. Covered mutations on directive-shifted lines
+// were therefore classified NOT COVERED and skipped, understating MSI and
+// inflating covered-code MSI. Such mutations must be scored, not skipped.
+func TestEngineCoverageHonorsLineDirectives(t *testing.T) {
+	_ = os.MkdirAll("./testdata", 0755)
+	tempDir, err := os.MkdirTemp("./testdata", "linedir-*")
+	if err != nil {
+		t.Fatalf("failed to create temp package: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// The //line :200 directive shifts Sub's `return` to reported line 200.
+	// Sub is exercised by TestSub; its mutation must be scored (KILLED), not
+	// NOT COVERED. Plain (a function with no directive) guards the non-shifted
+	// path so the test does not pass trivially by accident.
+	src := "package linedir\n\n" +
+		"func Sub(a, b int) int {\n" +
+		"//line :200\n" +
+		"\treturn a - b\n" +
+		"}\n\n" +
+		"func Plain(a, b int) int {\n" +
+		"\treturn a + b\n" +
+		"}\n"
+	testSrc := "package linedir\n\n" +
+		"import \"testing\"\n\n" +
+		"func TestSub(t *testing.T) {\n" +
+		"\tif got := Sub(5, 3); got != 2 { t.Fatalf(\"Sub=%d\", got) }\n" +
+		"}\n\n" +
+		"func TestPlain(t *testing.T) {\n" +
+		"\tif got := Plain(1, 2); got != 3 { t.Fatalf(\"Plain=%d\", got) }\n" +
+		"}\n"
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg.go"), []byte(src), 0644); err != nil {
+		t.Fatalf("failed to write pkg.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg_test.go"), []byte(testSrc), 0644); err != nil {
+		t.Fatalf("failed to write pkg_test.go: %v", err)
+	}
+
+	opts := &models.Options{}
+	opts.Exec.Coverage = true
+	opts.Exec.Timeout = 10
+	// Restrict to arithmetic mutators so the only mutations are the `a - b`
+	// (Sub, directive-shifted to line 200) and `a + b` (Plain, physical line).
+	opts.Mutator.DisableMutators = []string{
+		"branch/*", "composite/*", "concurrency/*", "conditional/*",
+		"expression/*", "loop/*", "numbers/*", "select/*", "statement/*",
+	}
+	opts.Remaining.Targets = []string{"./" + tempDir}
+
+	var stdout, stderr bytes.Buffer
+	e := &Engine{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}
+	res, err := e.Run(context.Background(), opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Report == nil {
+		t.Fatal("expected report to be populated, got nil")
+	}
+
+	// The Plain mutation is reported at the directive-shifted line 204: the
+	// //line :200 directive shifts Sub's `return` to line 200 and, because the
+	// directive persists, Plain's `return` to line 204. Go records Plain's
+	// coverage block under the directive filename ("."), while the tool looked
+	// up coverage under the physical file path — so Plain's covered mutation
+	// was wrongly classified NOT COVERED. It must be scored (KILLED here).
+	const shiftedLine = int64(204)
+	countOnShiftedLine := func(muts []models.Mutant) int64 {
+		var n int64
+		for _, m := range muts {
+			if m.Mutator.OriginalStartLine == shiftedLine {
+				n++
+			}
+		}
+		return n
+	}
+
+	if n := countOnShiftedLine(res.Report.NotCovered); n != 0 {
+		t.Fatalf("directive-shifted covered mutations must not be NOT COVERED; got %d on line %d (notCovered=%d killed=%d escaped=%d total=%d) stdout=%q stderr=%q",
+			n, shiftedLine, res.Report.Stats.NotCoveredCount, res.Report.Stats.KilledCount, res.Report.Stats.EscapedCount, res.Report.Stats.TotalMutantsCount, stdout.String(), stderr.String())
+	}
+	if n := countOnShiftedLine(res.Report.Killed); n < 1 {
+		t.Fatalf("expected the Plain mutation KILLED on shifted line %d, got %d (notCovered=%d killed=%d escaped=%d total=%d) stdout=%q stderr=%q",
+			shiftedLine, n, res.Report.Stats.NotCoveredCount, res.Report.Stats.KilledCount, res.Report.Stats.EscapedCount, res.Report.Stats.TotalMutantsCount, stdout.String(), stderr.String())
+	}
+}
+
+// TestEngineBaselineRejectsBrokenBuild is a regression test for #85: without a
+// baseline check by default, a package that does not compile reported 100%
+// killed and exit 0 (a false green) — `go test` exits 1 for a build failure,
+// which mapTestExitToResult classified as KILLED. A broken baseline must fail
+// fast with a tool error (exit 3) instead of a meaningless score.
+func TestEngineBaselineRejectsBrokenBuild(t *testing.T) {
+	_ = os.MkdirAll("./testdata", 0755)
+	tempDir, err := os.MkdirTemp("./testdata", "brokenbuild-*")
+	if err != nil {
+		t.Fatalf("failed to create temp package: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Deliberate type error: undeclared variable. The package will not build.
+	src := `package brokenbuild
+
+func Add(a, b int) int {
+	return a + b + undeclaredVar
+}
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg.go"), []byte(src), 0644); err != nil {
+		t.Fatalf("failed to write pkg.go: %v", err)
+	}
+
+	opts := &models.Options{}
+	opts.Exec.Timeout = 10
+	opts.Remaining.Targets = []string{"./" + tempDir}
+
+	var stdout, stderr bytes.Buffer
+	e := &Engine{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}
+	res, err := e.Run(context.Background(), opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.ExitCode != 3 {
+		t.Fatalf("expected exit code 3 (tool error) for an uncompilable package, got %d (stdout=%q stderr=%q)",
+			res.ExitCode, stdout.String(), stderr.String())
+	}
+	if res.Report != nil && res.Report.Stats.KilledCount > 0 && res.Report.Stats.TotalMutantsCount > 0 &&
+		res.Report.Stats.KilledCount == res.Report.Stats.TotalMutantsCount {
+		t.Fatalf("broken-build package reported all mutants KILLED (false green): killed=%d total=%d stdout=%q stderr=%q",
+			res.Report.Stats.KilledCount, res.Report.Stats.TotalMutantsCount, stdout.String(), stderr.String())
 	}
 }
