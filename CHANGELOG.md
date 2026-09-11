@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 ## [Unreleased]
 
 ### Fixed
+- Honor the documented `json_output: false` default when no config file is supplied, so normal runs do not write `report.json` (#133).
 - Forward execution timeout to baseline test execution when `--coverage` is enabled (replicate mutago #129). Previously, `go test -coverprofile` inherited Go's default 10-minute test timeout without applying `--exec-timeout`, allowing test suites that exceeded the configured execution timeout to pass the baseline run silently while subsequent mutant runs timed out, causing all mutants to be falsely reported as killed with 100% MSI.
 - Prevent format verb interpretation when displaying error strings without formatting arguments in CLI error reporting.
 
