@@ -4,6 +4,11 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Honor the documented `json_output: false` default when no config file is supplied, so normal runs do not write `report.json` (#133).
+
 ## [v2.9.2] — 2026-08-31
 
 ### Fixed
