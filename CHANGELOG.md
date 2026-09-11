@@ -4,7 +4,7 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [v2.10.5] — 2026-09-11
 
 ### Fixed
 - Honor the documented `json_output: false` default when no config file is supplied, so normal runs do not write `report.json` (#133).
@@ -594,4 +594,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.10.2]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.1...v2.10.2
 [v2.10.3]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.2...v2.10.3
 [v2.10.4]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.3...v2.10.4
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.4...HEAD
+[v2.10.5]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.4...v2.10.5
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.5...HEAD
