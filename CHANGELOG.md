@@ -4,6 +4,12 @@ All notable changes to this project will be documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Forward execution timeout to baseline test execution when `--coverage` is enabled (replicate mutago #129). Previously, `go test -coverprofile` inherited Go's default 10-minute test timeout without applying `--exec-timeout`, allowing test suites that exceeded the configured execution timeout to pass the baseline run silently while subsequent mutant runs timed out, causing all mutants to be falsely reported as killed with 100% MSI.
+- Prevent format verb interpretation when displaying error strings without formatting arguments in CLI error reporting.
+
 ## [v2.10.4] — 2026-09-10
 
 ### Fixed
@@ -587,3 +593,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.10.2]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.1...v2.10.2
 [v2.10.3]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.2...v2.10.3
 [v2.10.4]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.3...v2.10.4
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.4...HEAD

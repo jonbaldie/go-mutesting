@@ -776,7 +776,7 @@ func buildCoverageProfile(opts *models.Options, pkgFiles []string, tmpDir string
 		coverageTestFlags = uncachedTestFlags(extraTestFlags)
 	}
 	start := time.Now()
-	if err := runCoverageProfile(pkgPath, profilePath, coverageTestFlags); err != nil {
+	if err := runCoverageProfile(pkgPath, profilePath, opts.Exec.Timeout, coverageTestFlags); err != nil {
 		return nil, time.Since(start), err
 	}
 	elapsed := time.Since(start)
@@ -787,8 +787,8 @@ func buildCoverageProfile(opts *models.Options, pkgFiles []string, tmpDir string
 	return prof, elapsed, nil
 }
 
-func runCoverageProfile(pkg, profilePath string, extraTestFlags []string) error {
-	args := []string{"test", "-coverprofile=" + profilePath}
+func runCoverageProfile(pkg, profilePath string, timeoutSeconds uint, extraTestFlags []string) error {
+	args := []string{"test", "-coverprofile=" + profilePath, "-timeout", fmt.Sprintf("%ds", timeoutSeconds)}
 	args = append(args, extraTestFlags...)
 	args = append(args, pkg)
 	cmd := exec.Command("go", args...)
