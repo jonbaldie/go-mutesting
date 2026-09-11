@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+### Added
+- Resource-safe mutation guidance in `CLAUDE.md` for Fleet runs: set `GOMAXPROCS=1`, pass `--workers=1`, use a finite `--exec-timeout`, and cap CPU/memory in development containers (replicate mutago #123).
+
 ### Fixed
 - Clean up temporary mutation directories and overlay files upon process interruption (SIGINT / SIGTERM) unless `--do-not-remove-tmp-folder` is set (replicate mutago #134).
 
