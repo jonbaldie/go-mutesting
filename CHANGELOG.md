@@ -10,6 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 - Resource-safe mutation guidance in `CLAUDE.md` for Fleet runs: set `GOMAXPROCS=1`, pass `--workers=1`, use a finite `--exec-timeout`, and cap CPU/memory in development containers (replicate mutago #123).
 
 ### Fixed
+- `scripts/exec/test-mutated-package.sh` and `scripts/exec/test-current-directory.sh` now report mutants that fail to compile as SKIP instead of KILLED. `go test` exits 1 for a build failure just as it does for a failing test, so both scripts credited uncompilable mutants as kills and inflated MSI (replicate mutago #157).
 - Clean up temporary mutation directories and overlay files upon process interruption (SIGINT / SIGTERM) unless `--do-not-remove-tmp-folder` is set (replicate mutago #134).
 
 ## [v2.10.5] — 2026-09-11
