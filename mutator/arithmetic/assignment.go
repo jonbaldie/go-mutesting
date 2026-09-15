@@ -2,8 +2,10 @@ package arithmetic
 
 import (
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"go/types"
+	"math"
 
 	"github.com/jonbaldie/go-mutesting/v2/mutator"
 )
@@ -27,7 +29,7 @@ var assignmentMutations = map[token.Token]token.Token{
 }
 
 // MutatorArithmeticAssignment implements a mutator to change base assign logic.
-func MutatorArithmeticAssignment(_ *types.Package, _ *types.Info, node ast.Node) []mutator.Mutation {
+func MutatorArithmeticAssignment(_ *types.Package, info *types.Info, node ast.Node) []mutator.Mutation {
 	n, ok := node.(*ast.AssignStmt)
 	if !ok {
 		return nil
@@ -36,6 +38,10 @@ func MutatorArithmeticAssignment(_ *types.Package, _ *types.Info, node ast.Node)
 	original := n.Tok
 	mutated, ok := assignmentMutations[n.Tok]
 	if !ok {
+		return nil
+	}
+
+	if skipUnassignableShift(info, n) {
 		return nil
 	}
 
@@ -50,4 +56,54 @@ func MutatorArithmeticAssignment(_ *types.Package, _ *types.Info, node ast.Node)
 			},
 		},
 	}
+}
+
+func skipUnassignableShift(info *types.Info, n *ast.AssignStmt) bool {
+	if n.Tok != token.SHL_ASSIGN && n.Tok != token.SHR_ASSIGN {
+		return false
+	}
+	if info == nil || len(n.Lhs) == 0 || len(n.Rhs) == 0 {
+		return false
+	}
+	lhsType := info.TypeOf(n.Lhs[0])
+	rhsType := info.TypeOf(n.Rhs[0])
+	if lhsType == nil || rhsType == nil {
+		return false
+	}
+	if !types.AssignableTo(rhsType, lhsType) {
+		return true
+	}
+	return constantOverflowsType(info.Types[n.Rhs[0]].Value, lhsType)
+}
+
+var integerMax = map[types.BasicKind]uint64{
+	types.Int8:   math.MaxInt8,
+	types.Int16:  math.MaxInt16,
+	types.Int32:  math.MaxInt32,
+	types.Int64:  math.MaxInt64,
+	types.Int:    math.MaxInt,
+	types.Uint8:  math.MaxUint8,
+	types.Uint16: math.MaxUint16,
+	types.Uint32: math.MaxUint32,
+}
+
+func constantOverflowsType(val constant.Value, t types.Type) bool {
+	if val == nil {
+		return false
+	}
+	max, ok := maxOfIntegerType(t)
+	if !ok {
+		return false
+	}
+	x, _ := constant.Uint64Val(val)
+	return x > max
+}
+
+func maxOfIntegerType(t types.Type) (uint64, bool) {
+	basic, ok := t.Underlying().(*types.Basic)
+	if !ok {
+		return 0, false
+	}
+	max, ok := integerMax[basic.Kind()]
+	return max, ok
 }
