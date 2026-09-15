@@ -42,7 +42,11 @@ func zeroExprForNamed(u *types.Named, currentPkg *types.Package) ast.Expr {
 	if _, ok := u.Underlying().(*types.Struct); !ok {
 		return ZeroExprForType(u.Underlying(), currentPkg)
 	}
-	return &ast.CompositeLit{Type: structTypeExpr(u.Obj(), currentPkg)}
+	typeExpr := structTypeExpr(u.Obj(), currentPkg)
+	if typeExpr == nil {
+		return nil
+	}
+	return &ast.CompositeLit{Type: typeExpr}
 }
 
 func structTypeExpr(obj *types.TypeName, currentPkg *types.Package) ast.Expr {
@@ -51,6 +55,11 @@ func structTypeExpr(obj *types.TypeName, currentPkg *types.Package) ast.Expr {
 	}
 	if currentPkg != nil && obj.Pkg().Path() == currentPkg.Path() {
 		return ast.NewIdent(obj.Name())
+	}
+	// The type belongs to another package (or the current package is
+	// unknown), so an unexported name cannot be referenced from here.
+	if !obj.Exported() {
+		return nil
 	}
 	return &ast.SelectorExpr{
 		X:   ast.NewIdent(obj.Pkg().Name()),
