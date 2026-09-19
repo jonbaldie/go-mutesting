@@ -10,6 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 - Resource-safe mutation guidance in `CLAUDE.md` for Fleet runs: set `GOMAXPROCS=1`, pass `--workers=1`, use a finite `--exec-timeout`, and cap CPU/memory in development containers (replicate mutago #123).
 
 ### Fixed
+- Correct the agentic JSON `description` text for `arithmetic/assignment`, `loop/break`, and `loop/range_break` so it matches what each mutator actually does (replicate mutago #208).
 - `astutil` no longer builds zero-value struct literals for unexported types owned by another package, so `statement/return` stops emitting references such as `b.secret{}` that cannot compile (replicate mutago #201).
 - `arithmetic/assignment` now skips mutating `<<=` and `>>=` to `=` when the shift count type is not assignable to the shifted variable, or when an untyped constant shift count overflows the left-hand side type (e.g. `int8` `x <<= 200`), preventing uncompilable mutants and false kills (replicate mutago #139, #200).
 - `scripts/exec/test-mutated-package.sh` and `scripts/exec/test-current-directory.sh` now report mutants that fail to compile as SKIP instead of KILLED. `go test` exits 1 for a build failure just as it does for a failing test, so both scripts credited uncompilable mutants as kills and inflated MSI (replicate mutago #157).
