@@ -15,7 +15,7 @@ func init() {
 }
 
 func checkRemoveStatement(node ast.Stmt) bool {
-	skip := annotation.HandleBlockStmt(node)
+	skip := annotation.HandleBlockStmt(node, "statement/remove")
 	if skip {
 		return false
 	}
@@ -69,11 +69,15 @@ func MutatorRemoveStatement(pkg *types.Package, info *types.Info, node ast.Node)
 		if checkRemoveStatement(ni) {
 			li := i
 			old := l[li]
+			noop := astutil.CreateNoopOfStatement(pkg, info, old)
+			if astutil.HasUnsafeImportAfterReplacement(info, old, noop) {
+				continue
+			}
 
 			mutations = append(mutations, mutator.Mutation{
 				Position: old.Pos(),
 				Change: func() {
-					l[li] = astutil.CreateNoopOfStatement(pkg, info, old)
+					l[li] = noop
 				},
 				Reset: func() {
 					l[li] = old

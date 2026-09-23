@@ -17,12 +17,12 @@ import (
 // is a three-dot `git diff <base>...HEAD`, which diffs from the merge-base.
 //
 // Scenario:
-//   - master:  A=1 B=2   C=3   (initial)
-//   - master:  A=1 B=222 C=3   (B changed on master, AFTER feature branched)
+//   - main:    A=1 B=2   C=3   (initial)
+//   - main:    A=1 B=222 C=3   (B changed on main, AFTER feature branched)
 //   - feature: A=1 B=2   C=333 (only C changed in the PR)
 //
 // The developer's PR only touches line 5 (func C). The bug makes go-mutesting also
-// consider line 4 (func B) "changed", because two-dot diff attributes master's
+// consider line 4 (func B) "changed", because two-dot diff attributes main's
 // own commit to the feature branch.
 func TestParseChangedLines_StaleBranchExcludesTargetChanges(t *testing.T) {
 	for _, k := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_QUARANTINE_PATH"} {
@@ -33,11 +33,11 @@ func TestParseChangedLines_StaleBranchExcludesTargetChanges(t *testing.T) {
 	}
 	dir := t.TempDir()
 
-	runGit(t, dir, "init", "-q", "-b", "master")
+	runGit(t, dir, "init", "-q", "-b", "main")
 	runGit(t, dir, "config", "user.email", "t@t.com")
 	runGit(t, dir, "config", "user.name", "t")
 
-	// initial commit on master: B=2 C=3
+	// initial commit on main: B=2 C=3
 	writeAppGo(t, dir, 2, 3)
 	runGit(t, dir, "add", "app.go")
 	runGit(t, dir, "commit", "-qm", "initial")
@@ -45,10 +45,10 @@ func TestParseChangedLines_StaleBranchExcludesTargetChanges(t *testing.T) {
 	// branch off for feature work (feature's merge-base is this commit)
 	runGit(t, dir, "switch", "-qc", "feature")
 
-	// master advances: B changes to 222 (NOT part of the feature PR)
-	runGit(t, dir, "switch", "-q", "master")
+	// main advances: B changes to 222 (NOT part of the feature PR)
+	runGit(t, dir, "switch", "-q", "main")
 	writeAppGo(t, dir, 222, 3)
-	runGit(t, dir, "commit", "-qam", "master: change B")
+	runGit(t, dir, "commit", "-qam", "main: change B")
 
 	// feature changes only C (the sole change in the PR)
 	runGit(t, dir, "switch", "-q", "feature")
@@ -62,25 +62,25 @@ func TestParseChangedLines_StaleBranchExcludesTargetChanges(t *testing.T) {
 	}
 	defer os.Chdir(old)
 
-	cl, err := ParseChangedLines("master")
+	cl, err := ParseChangedLines("main")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	ranges := cl["app.go"]
-	t.Logf("ParseChangedLines(\"master\") => %v", ranges)
+	t.Logf("ParseChangedLines(\"main\") => %v", ranges)
 
 	// The PR only touched line 5 (func C). That must be flagged.
 	if !lineChanged(ranges, 5) {
 		t.Errorf("expected line 5 (func C, the real PR change) to be flagged changed")
 	}
 
-	// Line 4 (func B) was changed on master AFTER the feature branched, not in the
+	// Line 4 (func B) was changed on main AFTER the feature branched, not in the
 	// PR. A correct merge-base (three-dot) comparison must NOT flag it. With the
-	// buggy two-dot `git diff master` this assertion fails, because master's own
+	// buggy two-dot `git diff main` this assertion fails, because main's own
 	// commit gets attributed to the feature branch.
 	if lineChanged(ranges, 4) {
-		t.Errorf("line 4 (func B) was changed on master, not in the feature PR, and "+
+		t.Errorf("line 4 (func B) was changed on main, not in the feature PR, and "+
 			"must not be flagged as changed. ranges=%v", ranges)
 	}
 
@@ -95,17 +95,17 @@ func TestParseChangedLines_StaleBranchExcludesTargetChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cl2, err := ParseChangedLines("master")
+	cl2, err := ParseChangedLines("main")
 	if err != nil {
 		t.Fatal(err)
 	}
 	ranges2 := cl2["app.go"]
-	t.Logf("after uncommitted edit, ParseChangedLines(\"master\") => %v", ranges2)
+	t.Logf("after uncommitted edit, ParseChangedLines(\"main\") => %v", ranges2)
 	if !lineChanged(ranges2, 3) {
 		t.Errorf("uncommitted change to line 3 (func A) must be reported. ranges=%v", ranges2)
 	}
 	if lineChanged(ranges2, 4) {
-		t.Errorf("line 4 (func B, changed on master) must still be excluded. ranges=%v", ranges2)
+		t.Errorf("line 4 (func B, changed on main) must still be excluded. ranges=%v", ranges2)
 	}
 }
 

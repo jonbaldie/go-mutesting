@@ -103,6 +103,79 @@ func mutate(enabled bool, outer int) {
 	}
 }
 
+func TestBranchMutationsGenericCodePreservesASTInvariants(t *testing.T) {
+	const source = `package example
+
+import (
+	"slices"
+	"sync/atomic"
+)
+
+var (
+	sinkSlice []int
+	sinkVal   any
+)
+
+func dummy() {
+	_ = slices.Equal([]int{1}, []int{1})
+	var v atomic.Value
+	_ = v
+}
+
+func mutate(enabled bool, s []int, v any) {
+	if enabled {
+		sinkSlice = slices.Clone(s)
+	} else {
+		sinkVal = v.(atomic.Pointer[int])
+	}
+
+	switch {
+	case enabled:
+		slices.Sort(s)
+	default:
+		sinkVal = v
+	}
+}
+`
+	tests := []struct {
+		name    string
+		mutator mutator.Mutator
+	}{
+		{name: "if", mutator: MutatorIf},
+		{name: "else", mutator: MutatorElse},
+		{name: "case", mutator: MutatorCase},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fset, file, pkg, info := parseBranchSource(t, source)
+			original := printBranchSource(t, fset, file)
+			var mutations []mutator.Mutation
+			ast.Inspect(file, func(node ast.Node) bool {
+				mutations = append(mutations, tt.mutator(pkg, info, node)...)
+				return true
+			})
+			if len(mutations) == 0 {
+				t.Fatal("mutator produced no mutations")
+			}
+
+			for i, mutation := range mutations {
+				mutation.Change()
+				mutated := printBranchSource(t, fset, file)
+				if mutated == original {
+					t.Errorf("mutation %d did not change printed source", i)
+				}
+				parseBranchSource(t, mutated)
+
+				mutation.Reset()
+				if reset := printBranchSource(t, fset, file); reset != original {
+					t.Errorf("mutation %d reset did not restore original source\noriginal:\n%s\nreset:\n%s", i, original, reset)
+				}
+			}
+		})
+	}
+}
+
 func TestMutatorIfWithEmptyInfoStillMutates(t *testing.T) {
 	node := &ast.IfStmt{
 		Body: &ast.BlockStmt{List: []ast.Stmt{&ast.ExprStmt{X: ast.NewIdent("x")}}},
@@ -236,6 +309,44 @@ func Named(c bool) (n int) {
 	}
 }
 
+func TestBranchMutatorPreservesImportedPackageAlias(t *testing.T) {
+	const source = `package example
+
+import u "net/url"
+
+func Value(c bool) u.URL {
+	if c {
+		return u.URL{Scheme: "https"}
+	} else {
+		return u.URL{Host: "example"}
+	}
+}
+`
+	fset, file, pkg, info := parseBranchSource(t, source)
+	var mutation mutator.Mutation
+	ast.Inspect(file, func(node ast.Node) bool {
+		mutations := MutatorIf(pkg, info, node)
+		if len(mutations) == 0 {
+			return true
+		}
+		mutation = mutations[0]
+		return false
+	})
+	if mutation.Change == nil {
+		t.Fatal("mutator produced no mutation")
+	}
+
+	mutation.Change()
+	mutated := printBranchSource(t, fset, file)
+	mutation.Reset()
+	if err := typeCheckSource(t, mutated); err != nil {
+		t.Fatalf("mutation does not compile:\n%s\n%v", mutated, err)
+	}
+	if !strings.Contains(mutated, "u.URL{}") {
+		t.Fatalf("mutation did not preserve the imported package alias:\n%s", mutated)
+	}
+}
+
 func TestBranchMutatorsLeaveNonTerminatingAndNoResultBodiesUnchanged(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -364,6 +475,81 @@ var sink int
 				if err := typeCheckSource(t, mutated); err != nil {
 					t.Errorf("mutation %d does not compile:\n%s\n%v", i, mutated, err)
 				}
+			}
+		})
+	}
+}
+
+func TestBranchMutators_SoleImport(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutator mutator.Mutator
+		source  string
+	}{
+		{
+			name:    "if",
+			mutator: MutatorIf,
+			source: `package example
+
+import "io"
+
+func f(x any) {
+	if true {
+		_, _ = x.(io.Reader)
+	}
+}
+`,
+		},
+		{
+			name:    "else",
+			mutator: MutatorElse,
+			source: `package example
+
+import "io"
+
+func f(x any) {
+	if false {
+	} else {
+		_, _ = x.(io.Reader)
+	}
+}
+`,
+		},
+		{
+			name:    "case",
+			mutator: MutatorCase,
+			source: `package example
+
+import "io"
+
+func f(x any) {
+	switch {
+	case true:
+		_, _ = x.(io.Reader)
+	}
+}
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fset, file, pkg, info := parseBranchSource(t, tt.source)
+			var mutations []mutator.Mutation
+			ast.Inspect(file, func(node ast.Node) bool {
+				mutations = append(mutations, tt.mutator(pkg, info, node)...)
+				return true
+			})
+			for _, m := range mutations {
+				m.Change()
+				mutated := printBranchSource(t, fset, file)
+				m.Reset()
+				if err := typeCheckSource(t, mutated); err != nil {
+					t.Logf("mutant compilation error: %v", err)
+				}
+			}
+			if len(mutations) != 0 {
+				t.Fatalf("expected 0 mutations because branch contains sole import in file, got %d", len(mutations))
 			}
 		})
 	}

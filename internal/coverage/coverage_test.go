@@ -171,6 +171,31 @@ func TestIsCoveredRelativeUsesDirectProfileKey(t *testing.T) {
 	assert.False(t, p.IsCoveredRelative("pkg/foo.go", 20))
 }
 
+func TestIsLineCoveredAnywhere_HitAndMiss(t *testing.T) {
+	// A single-file profile so the range loop must run its body to find a hit.
+	p := &Profile{coveredLines: map[string]map[int]bool{
+		"pkg/a.go": {1: true, 5: false},
+	}}
+	// Hit: line 1 is recorded covered — must return true (kills statement/return
+	// of the `return true` and a loop that skips its body).
+	assert.True(t, p.IsLineCoveredAnywhere(1))
+	// Miss: line 5 is present but false, line 99 absent — both must return false
+	// (kills a removed `if lines[line]` guard, which would wrongly return true).
+	assert.False(t, p.IsLineCoveredAnywhere(5))
+	assert.False(t, p.IsLineCoveredAnywhere(99))
+}
+
+func TestIsLineCoveredAnywhere_NonPositiveShortCircuits(t *testing.T) {
+	// line <= 0 returns false before scanning the map, even when line 0 itself
+	// is recorded as covered. This kills the `<=` comparison, its negation, the
+	// `0` literal mutations, and removal of the guard's `return false`.
+	p := &Profile{coveredLines: map[string]map[int]bool{
+		"pkg/a.go": {0: true, 1: true},
+	}}
+	assert.False(t, p.IsLineCoveredAnywhere(0))
+	assert.False(t, p.IsLineCoveredAnywhere(-1))
+}
+
 func TestIsCovered_DifferentPackageSameFilename(t *testing.T) {
 	// A file in a different package with the same name must NOT match.
 	path := writeTmpProfile(t, sampleProfile)
@@ -391,6 +416,29 @@ func TestBuildPerTestProfile_RealPackage(t *testing.T) {
 	}
 }
 
+func TestBuildPerTestProfile_CountFlagSupported(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: runs per-test coverage profiling")
+	}
+	tmp := t.TempDir()
+	prof, err := BuildPerTestProfile(
+		"github.com/jonbaldie/go-mutesting/v2/mutator/arithmetic",
+		"github.com/jonbaldie/go-mutesting/v2",
+		tmp, 30, 1, []string{"-count=1"},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, prof)
+
+	var found bool
+	for l := 1; l <= 100; l++ {
+		if len(prof.CoveringTests("/abs/mutator/arithmetic/assignment.go", l)) > 0 {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "profile should contain covering tests even when -count=1 is passed in extraTestFlags")
+}
+
 func TestBuildPerTestProfile_EmptyPackage(t *testing.T) {
 	// A package with no tests returns nil, nil.
 	tmp := t.TempDir()
@@ -443,29 +491,6 @@ func TestBuildPerTestProfileForTests_CompileFailure(t *testing.T) {
 	)
 	assert.ErrorContains(t, err, "compile coverage test binary")
 	assert.Nil(t, prof)
-}
-
-func TestBuildPerTestProfile_CountFlagSupported(t *testing.T) {
-	if testing.Short() {
-		t.Skip("slow: runs per-test coverage profiling")
-	}
-	tmp := t.TempDir()
-	prof, err := BuildPerTestProfile(
-		"github.com/jonbaldie/go-mutesting/v2/mutator/arithmetic",
-		"github.com/jonbaldie/go-mutesting/v2",
-		tmp, 30, 1, []string{"-count=1"},
-	)
-	require.NoError(t, err)
-	require.NotNil(t, prof)
-
-	var found bool
-	for l := 1; l <= 100; l++ {
-		if len(prof.CoveringTests("/abs/mutator/arithmetic/assignment.go", l)) > 0 {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "profile should contain covering tests even when -count=1 is passed in extraTestFlags")
 }
 
 func TestTestBinaryFlags(t *testing.T) {
@@ -669,29 +694,4 @@ func TestBuildPerTestProfile_SingleTestPackage(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "profile must contain coverage data for mutator.go")
-}
-
-func TestIsLineCoveredAnywhere_HitAndMiss(t *testing.T) {
-	// A single-file profile so the range loop must run its body to find a hit.
-	p := &Profile{coveredLines: map[string]map[int]bool{
-		"pkg/a.go": {1: true, 5: false},
-	}}
-	// Hit: line 1 is recorded covered — must return true (kills statement/return
-	// of the `return true` and a loop that skips its body).
-	assert.True(t, p.IsLineCoveredAnywhere(1))
-	// Miss: line 5 is present but false, line 99 absent — both must return false
-	// (kills a removed `if lines[line]` guard, which would wrongly return true).
-	assert.False(t, p.IsLineCoveredAnywhere(5))
-	assert.False(t, p.IsLineCoveredAnywhere(99))
-}
-
-func TestIsLineCoveredAnywhere_NonPositiveShortCircuits(t *testing.T) {
-	// line <= 0 returns false before scanning the map, even when line 0 itself
-	// is recorded as covered. This kills the `<=` comparison, its negation, the
-	// `0` literal mutations, and removal of the guard's `return false`.
-	p := &Profile{coveredLines: map[string]map[int]bool{
-		"pkg/a.go": {0: true, 1: true},
-	}}
-	assert.False(t, p.IsLineCoveredAnywhere(0))
-	assert.False(t, p.IsLineCoveredAnywhere(-1))
 }

@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -42,9 +43,10 @@ import (
 )
 
 const (
-	returnOk                 = 0
-	returnError              = 3
-	returnMsiThresholdNotMet = 4
+	returnOk                       = 0
+	returnError                    = 3
+	returnMsiThresholdNotMet       = 4
+	adaptiveBaselineTimeoutSeconds = 300
 )
 
 // Engine orchestrates the mutation testing lifecycle.
@@ -64,21 +66,27 @@ type mutatorItem struct {
 	Mutator mutator.Mutator
 }
 
-type mutationRun struct {
-	ctx            context.Context
-	opts           *models.Options
-	mutators       []mutatorItem
-	blacklist      map[string]struct{}
-	tmpDir         string
+type execConfig struct {
 	numWorkers     int
 	execs          []string
 	extraTestFlags []string
-	report         *models.Report
-	mu             *sync.Mutex
-	modulePath     string
-	moduleRoot     string
-	jobs           chan<- execJob
-	stdout         io.Writer
+}
+
+type mutationRun struct {
+	ctx              context.Context
+	opts             *models.Options
+	mutators         []mutatorItem
+	blacklist        map[string]struct{}
+	tmpDir           string
+	exec             execConfig
+	report           *models.Report
+	mu               *sync.Mutex
+	modulePath       string
+	moduleRoot       string
+	jobs             chan<- execJob
+	stdout           io.Writer
+	runMutantIDFound *atomic.Bool
+	gitChangedLines  gitdiff.ChangedLines
 }
 
 type execJob struct {
@@ -96,19 +104,20 @@ type execJob struct {
 	// packageLevelDecl is true when the mutation sits inside a package-level
 	// const/var/type/import declaration. Such declarations are not executable
 	// and never appear in `go test` coverage profiles, so the --coverage
-	// filter must not skip them as NOT COVERED (see mutago #83).
+	// filter must not skip them as NOT COVERED (see #83).
 	packageLevelDecl bool
 	// directiveShifted is true when a //line directive altered the position
-	// the tool reports for this mutation (filename and/or line differ from the
+	// go-mutesting reports for this mutation (filename and/or line differ from the
 	// raw source position). Go's coverage profile records such positions under
 	// the directive's filename (or "." for a filename-less directive), not the
 	// physical file, so the coverage lookup must consult the directive
-	// filename too (see mutago #84).
+	// filename too (see #84).
 	directiveShifted bool
 	// adjRelFile is the directive-adjusted filename relative to the module
 	// root (the filename Go's coverage profile uses for this position). It is
 	// only meaningful when directiveShifted is true.
-	adjRelFile string
+	adjRelFile       string
+	runMutantIDFound *atomic.Bool
 }
 
 type mutationSource struct {
@@ -143,7 +152,6 @@ func (e *Engine) Run(ctx context.Context, opts *models.Options, bl *baseline.Fil
 // RunResolved executes a mutation run using targets discovered by the caller.
 func (e *Engine) RunResolved(ctx context.Context, opts *models.Options, bl *baseline.File, targets importing.ResolvedTargets) (Result, error) {
 	e.initDefaults()
-
 	run, pkgs, jobs, jobWg, stopProgress, progressWg, _, err := e.validateAndInitRun(ctx, opts, targets)
 	if err != nil {
 		return Result{ExitCode: returnError}, err
@@ -157,7 +165,7 @@ func (e *Engine) RunResolved(ctx context.Context, opts *models.Options, bl *base
 	defer cleanup()
 
 	report := run.report
-	if exitCode := runBaselineChecks(opts, pkgs, run.execs, run.extraTestFlags); exitCode != 0 {
+	if exitCode := runBaselineChecks(opts, pkgs, run.exec.execs, run.exec.extraTestFlags); exitCode != 0 {
 		return Result{Report: report, ExitCode: exitCode}, nil
 	}
 
@@ -184,7 +192,7 @@ func (e *Engine) RunResolved(ctx context.Context, opts *models.Options, bl *base
 	}
 
 	report.Calculate()
-	exitCode := finalizeResults(e.Stdout, e.Stderr, opts, report, bl, run.moduleRoot)
+	exitCode := finalizeResults(e.Stdout, e.Stderr, opts, report, bl, run.moduleRoot, run.runMutantIDFound.Load())
 	return Result{Report: report, ExitCode: exitCode}, nil
 }
 
@@ -201,13 +209,6 @@ func newRunCleanup(opts *models.Options, jobs chan execJob, jobWg *sync.WaitGrou
 	}
 }
 
-func (e *Engine) validateAndInitRun(ctx context.Context, opts *models.Options, targets importing.ResolvedTargets) (*mutationRun, []importing.Package, chan execJob, *sync.WaitGroup, chan struct{}, *sync.WaitGroup, gitdiff.ChangedLines, error) {
-	if err := validateAdaptiveTimeoutTestCount(opts); err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, err
-	}
-	return e.initRun(ctx, opts, targets)
-}
-
 func (e *Engine) initDefaults() {
 	if e.Stdout == nil {
 		e.Stdout = os.Stdout
@@ -215,6 +216,13 @@ func (e *Engine) initDefaults() {
 	if e.Stderr == nil {
 		e.Stderr = os.Stderr
 	}
+}
+
+func (e *Engine) validateAndInitRun(ctx context.Context, opts *models.Options, targets importing.ResolvedTargets) (*mutationRun, []importing.Package, chan execJob, *sync.WaitGroup, chan struct{}, *sync.WaitGroup, gitdiff.ChangedLines, error) {
+	if err := validateAdaptiveTimeoutTestCount(opts); err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, err
+	}
+	return e.initRun(ctx, opts, targets)
 }
 
 func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets importing.ResolvedTargets) (*mutationRun, []importing.Package, chan execJob, *sync.WaitGroup, chan struct{}, *sync.WaitGroup, gitdiff.ChangedLines, error) {
@@ -255,6 +263,7 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 
 	var jobs chan execJob
 	var jobWg *sync.WaitGroup
+	runMutantIDFound := &atomic.Bool{}
 	if !opts.General.DryRun && !opts.Exec.NoExec {
 		jobs, jobWg = startWorkerPool(opts, numWorkers, report, &reportMu, e.Stdout, gitChangedLines)
 	}
@@ -266,20 +275,24 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 	}
 
 	run := &mutationRun{
-		ctx:            ctx,
-		opts:           opts,
-		mutators:       buildActiveMutators(opts),
-		blacklist:      mutationBlackList,
-		tmpDir:         tmpDir,
-		numWorkers:     numWorkers,
-		execs:          execs,
-		extraTestFlags: extraTestFlags,
-		report:         report,
-		mu:             &reportMu,
-		modulePath:     detectModulePath(),
-		moduleRoot:     detectModuleRoot(),
-		jobs:           jobs,
-		stdout:         e.Stdout,
+		ctx:       ctx,
+		opts:      opts,
+		mutators:  buildActiveMutators(opts),
+		blacklist: mutationBlackList,
+		tmpDir:    tmpDir,
+		exec: execConfig{
+			numWorkers:     numWorkers,
+			execs:          execs,
+			extraTestFlags: extraTestFlags,
+		},
+		report:           report,
+		mu:               &reportMu,
+		modulePath:       detectModulePath(),
+		moduleRoot:       detectModuleRoot(),
+		jobs:             jobs,
+		stdout:           e.Stdout,
+		runMutantIDFound: runMutantIDFound,
+		gitChangedLines:  gitChangedLines,
 	}
 
 	return run, pkgs, jobs, jobWg, stopProgress, progressWg, gitChangedLines, nil
@@ -384,13 +397,21 @@ func detectModuleRoot() string {
 	return filepath.Dir(gomod)
 }
 
+func sumDryRunTotals(totals map[string]int) int {
+	var total int
+	for _, count := range totals {
+		total += count
+	}
+	return total
+}
+
 func mutateAll(r *mutationRun, pkgs []importing.Package, coverageProfiles []*coverage.Profile) (dryRunTotal int, dryRunMutatorTotals map[string]int, exitCode int) {
 	if r.opts.General.DryRun {
 		dryRunMutatorTotals = make(map[string]int)
 	}
 	for i, importPkg := range pkgs {
 		if r.ctx.Err() != nil {
-			return dryRunTotal, dryRunMutatorTotals, returnError
+			return 0, dryRunMutatorTotals, returnError
 		}
 		var coverProfile *coverage.Profile
 		if coverageProfiles != nil {
@@ -399,30 +420,27 @@ func mutateAll(r *mutationRun, pkgs []importing.Package, coverageProfiles []*cov
 		perTestProf := perTestForPackage(r, importPkg)
 		for _, file := range importPkg.Files {
 			if r.ctx.Err() != nil {
-				return dryRunTotal, dryRunMutatorTotals, returnError
+				return 0, dryRunMutatorTotals, returnError
 			}
-			count, code := processFile(r, file, coverProfile, perTestProf, dryRunMutatorTotals)
-			if code != 0 {
-				return dryRunTotal, dryRunMutatorTotals, code
+			if _, code := processFile(r, file, coverProfile, perTestProf, dryRunMutatorTotals); code != 0 {
+				return 0, dryRunMutatorTotals, code
 			}
-			dryRunTotal += count
 		}
 	}
-	return dryRunTotal, dryRunMutatorTotals, 0
+	return sumDryRunTotals(dryRunMutatorTotals), dryRunMutatorTotals, 0
 }
 
 func configureAdaptiveTimeoutAndCoverage(opts *models.Options, pkgs []importing.Package, run *mutationRun) ([]*coverage.Profile, error) {
 	if opts.Exec.Coverage && !opts.Exec.NoExec && !opts.General.DryRun {
-		profiles, maxBaseline, err := prepareCoverageProfiles(opts, pkgs, run.tmpDir, run.modulePath, run.extraTestFlags, run.report)
+		profiles, maxBaseline, err := prepareCoverageProfiles(opts, pkgs, run.tmpDir, run.modulePath, run.exec.extraTestFlags, run.report)
 		if err != nil {
 			return nil, err
 		}
-		if len(run.execs) == 0 {
+		if len(run.exec.execs) == 0 {
 			applyAdaptiveTimeoutFromBaseline(opts, maxBaseline)
 		}
 		return profiles, nil
 	}
-	applyAdaptiveTimeout(opts, pkgs, run.execs, run.extraTestFlags)
 	return nil, nil
 }
 
@@ -446,10 +464,10 @@ func prepareCoverageProfiles(opts *models.Options, pkgs []importing.Package, tmp
 }
 
 func perTestForPackage(r *mutationRun, importPkg importing.Package) *coverage.PerTestProfile {
-	if !r.opts.Exec.PerTest || r.opts.Exec.NoExec || r.opts.General.DryRun || len(r.execs) != 0 {
+	if !r.opts.Exec.PerTest || r.opts.Exec.NoExec || r.opts.General.DryRun || len(r.exec.execs) != 0 {
 		return nil
 	}
-	return buildPerTestCoverageProfile(r.opts, importPkg.Files, r.modulePath, r.tmpDir, r.numWorkers, r.extraTestFlags)
+	return buildPerTestCoverageProfile(r.opts, importPkg.Files, r.modulePath, r.tmpDir, r.exec.numWorkers, r.exec.extraTestFlags)
 }
 
 func processFile(r *mutationRun, file string, coverProfile *coverage.Profile, perTestProf *coverage.PerTestProfile, dryRunMutatorTotals map[string]int) (int, int) {
@@ -577,6 +595,10 @@ func applyMutator(r *mutationRun, m mutatorItem, fc *fileContext, node ast.Node,
 
 func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, originalStartLine int64, originalSourceCode []byte, dryRunCounts, dryRunGlobalTotals map[string]int) {
 	if r.opts.General.DryRun {
+		relFile := toRelPath(fc.absFile, r.moduleRoot)
+		if isGitDiffSkipped(r.gitChangedLines, relFile, fc.absFile, int(originalStartLine)) {
+			return
+		}
 		countDryRunMutation(m.Name, dryRunCounts, dryRunGlobalTotals)
 		return
 	}
@@ -602,6 +624,7 @@ func processMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mu
 		return
 	}
 	checksum := stableMutationEditKey(toRelPath(fc.absFile, r.moduleRoot), originalSourceCode, edit)
+	mutant.Checksum = checksum
 	if _, duplicate := r.blacklist[checksum]; duplicate {
 		r.mu.Lock()
 		r.report.Stats.DuplicatedCount++
@@ -624,9 +647,9 @@ func processMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mu
 		pkg:            fc.pkg,
 		mutant:         mutant,
 		coverProfile:   fc.coverProfile,
-		execs:          r.execs,
+		execs:          r.exec.execs,
 		perTestProf:    fc.perTestProf,
-		extraTestFlags: r.extraTestFlags,
+		extraTestFlags: r.exec.extraTestFlags,
 		runMutantID:    r.opts.Exec.RunMutantID,
 		tmpDir:         r.tmpDir,
 		source: mutationSource{
@@ -641,6 +664,7 @@ func processMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mu
 		packageLevelDecl: isPackageLevelDecl(fc.src, mutation.Position),
 		directiveShifted: directiveShifted,
 		adjRelFile:       toRelPath(filepath.Join(r.moduleRoot, adjPos.Filename), r.moduleRoot),
+		runMutantIDFound: r.runMutantIDFound,
 	}
 	select {
 	case <-r.ctx.Done():
@@ -701,32 +725,55 @@ func parseExecFlags(opts *models.Options) (execs []string, extraTestFlags []stri
 // applied. A package whose baseline does not pass (including a build/compile
 // failure) is meaningless to mutate: `go test` exits 1 and mapTestExitToResult
 // classifies that as KILLED, so every mutant is "killed" by the pre-existing
-// failure and the run reports a false 100% MSI (see mutago #85). Fail fast with
-// a tool error instead.
+// failure and the run reports a false 100% MSI (see #85). Fail fast with a tool
+// error instead.
 //
 // The check runs by default for the built-in exec path. It is skipped for
 // --coverage (the coverage build itself is the baseline and is validated
 // separately), --no-exec, --dry-run, and custom --exec (the built-in `go test`
 // baseline does not reflect a custom exec command). The --noop flag is now a
 // no-op retained for backward compatibility, since the check is always on.
+// When --timeout-coefficient is set, the check uses a generous timeout, measures
+// the clean run, and sets the per-mutation timeout from that measurement.
+func skipBaselineChecks(opts *models.Options, execs []string) bool {
+	return opts.Exec.Coverage || opts.Exec.NoExec || opts.General.DryRun || len(execs) > 0
+}
+
 func runBaselineChecks(opts *models.Options, pkgs []importing.Package, execs []string, extraTestFlags []string) int {
-	if opts.Exec.Coverage || opts.Exec.NoExec || opts.General.DryRun || len(execs) > 0 {
+	if skipBaselineChecks(opts, execs) {
 		return 0 // returnOk
 	}
+	timeout := opts.Exec.Timeout
+	flags := extraTestFlags
+	measureAdaptive := opts.Exec.TimeoutCoefficient > 0
+	if measureAdaptive {
+		timeout = adaptiveBaselineTimeoutSeconds
+		flags = uncachedTestFlags(extraTestFlags)
+	}
+	var maxBaseline time.Duration
 	for _, importPkg := range pkgs {
 		pkgPath := packageImportPath(importPkg.Files)
 		if pkgPath == "" {
 			continue
 		}
-		args := []string{"test", "-timeout", fmt.Sprintf("%ds", opts.Exec.Timeout)}
-		args = append(args, extraTestFlags...)
+		args := []string{"test", "-timeout", fmt.Sprintf("%ds", timeout)}
+		args = append(args, flags...)
 		args = append(args, pkgPath)
 		cmd := exec.Command("go", args...)
 		cmd.Env = os.Environ()
-		if out, err := cmd.CombinedOutput(); err != nil {
+		start := time.Now()
+		out, err := cmd.CombinedOutput()
+		elapsed := time.Since(start)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Baseline test failed for %q — mutation testing requires a green baseline; fix the build/tests before running go-mutesting:\n%s\n", pkgPath, out)
 			return 3 // returnError
 		}
+		if elapsed > maxBaseline {
+			maxBaseline = elapsed
+		}
+	}
+	if measureAdaptive {
+		applyAdaptiveTimeoutFromBaseline(opts, maxBaseline)
 	}
 	console.Verbose(opts, "Baseline check passed — all packages green before mutation")
 	return 0 // returnOk
@@ -750,32 +797,6 @@ func packageImportPath(files []string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func applyAdaptiveTimeout(opts *models.Options, pkgs []importing.Package, execs []string, extraTestFlags []string) {
-	if opts.Exec.TimeoutCoefficient <= 0 || opts.Exec.NoExec || len(execs) > 0 {
-		return
-	}
-	baselineTestFlags := uncachedTestFlags(extraTestFlags)
-	var maxBaseline time.Duration
-	for _, importPkg := range pkgs {
-		pkgPath := packageImportPath(importPkg.Files)
-		if pkgPath == "" {
-			continue
-		}
-		baseArgs := []string{"test", "-timeout", "300s"}
-		baseArgs = append(baseArgs, baselineTestFlags...)
-		baseArgs = append(baseArgs, pkgPath)
-		cmd := exec.Command("go", baseArgs...)
-		cmd.Env = os.Environ()
-		start := time.Now()
-		_ = cmd.Run()
-		elapsed := time.Since(start)
-		if elapsed > maxBaseline {
-			maxBaseline = elapsed
-		}
-	}
-	applyAdaptiveTimeoutFromBaseline(opts, maxBaseline)
-}
-
 func applyAdaptiveTimeoutFromBaseline(opts *models.Options, baseline time.Duration) {
 	if opts.Exec.TimeoutCoefficient <= 0 || baseline <= 0 {
 		return
@@ -795,27 +816,74 @@ func buildCoverageProfile(opts *models.Options, pkgFiles []string, tmpDir string
 	}
 	pkgPath := packageImportPath(pkgFiles)
 	if pkgPath == "" {
-		return nil, 0, fmt.Errorf("could not determine package path for coverage")
+		return nil, 0, fmt.Errorf("cannot determine package path for coverage")
 	}
 	profileDir := filepath.Join(tmpDir, "coverage", filepath.FromSlash(pkgPath))
 	if err := os.MkdirAll(profileDir, 0755); err != nil {
-		return nil, 0, fmt.Errorf("create coverage directory for %q: %w", pkgPath, err)
+		return nil, 0, fmt.Errorf("cannot create coverage directory for %q: %w", pkgPath, err)
 	}
 	profilePath := filepath.Join(profileDir, "coverage.out")
 	coverageTestFlags := extraTestFlags
+	timeout := opts.Exec.Timeout
 	if opts.Exec.TimeoutCoefficient > 0 && strings.TrimSpace(opts.Exec.Exec) == "" {
 		coverageTestFlags = uncachedTestFlags(extraTestFlags)
+		timeout = adaptiveBaselineTimeoutSeconds
 	}
 	start := time.Now()
-	if err := runCoverageProfile(pkgPath, profilePath, opts.Exec.Timeout, coverageTestFlags); err != nil {
+	if err := runCoverageProfile(pkgPath, profilePath, timeout, coverageTestFlags); err != nil {
 		return nil, time.Since(start), err
 	}
 	elapsed := time.Since(start)
 	prof, err := coverage.ParseProfile(profilePath, modulePath)
 	if err != nil {
-		return nil, elapsed, fmt.Errorf("parse coverage profile for %q: %w", pkgPath, err)
+		return nil, elapsed, fmt.Errorf("cannot parse coverage profile for %q: %w", pkgPath, err)
 	}
 	return prof, elapsed, nil
+}
+
+func hasTestCountFlag(testFlags []string) bool {
+	for _, flag := range testFlags {
+		if flag == "-count" || strings.HasPrefix(flag, "-count=") {
+			return true
+		}
+	}
+	return false
+}
+
+func uncachedTestFlags(testFlags []string) []string {
+	if hasTestCountFlag(testFlags) {
+		return testFlags
+	}
+	return append(append([]string{}, testFlags...), "-count=1")
+}
+
+func validateAdaptiveTimeoutTestCount(opts *models.Options) error {
+	if opts.Exec.TimeoutCoefficient <= 0 || opts.Exec.NoExec || opts.General.DryRun || strings.TrimSpace(opts.Exec.Exec) != "" {
+		return nil
+	}
+	testFlags := strings.Fields(opts.Exec.TestFlags)
+	for i := range testFlags {
+		value, found := testCountValue(testFlags, i)
+		if !found {
+			continue
+		}
+		count, err := strconv.Atoi(value)
+		if err != nil || count > 0 {
+			continue
+		}
+		return fmt.Errorf("adaptive timeout requires a positive test count, got %d", count)
+	}
+	return nil
+}
+
+func testCountValue(testFlags []string, index int) (string, bool) {
+	if value, found := strings.CutPrefix(testFlags[index], "-count="); found {
+		return value, true
+	}
+	if testFlags[index] != "-count" || index+1 >= len(testFlags) {
+		return "", false
+	}
+	return testFlags[index+1], true
 }
 
 func runCoverageProfile(pkg, profilePath string, timeoutSeconds uint, extraTestFlags []string) error {
@@ -832,51 +900,6 @@ func runCoverageProfile(pkg, profilePath string, timeoutSeconds uint, extraTestF
 		return fmt.Errorf("coverage profile not created for %q", pkg)
 	}
 	return nil
-}
-
-func hasTestCountFlag(flags []string) bool {
-	for _, flag := range flags {
-		if flag == "-count" || strings.HasPrefix(flag, "-count=") {
-			return true
-		}
-	}
-	return false
-}
-
-func uncachedTestFlags(flags []string) []string {
-	if hasTestCountFlag(flags) {
-		return flags
-	}
-	return append(append([]string{}, flags...), "-count=1")
-}
-
-func validateAdaptiveTimeoutTestCount(opts *models.Options) error {
-	if opts.Exec.TimeoutCoefficient <= 0 || opts.Exec.NoExec || opts.General.DryRun || strings.TrimSpace(opts.Exec.Exec) != "" {
-		return nil
-	}
-	flags := strings.Fields(opts.Exec.TestFlags)
-	for i := range flags {
-		value, found := testCountValue(flags, i)
-		if !found {
-			continue
-		}
-		count, err := strconv.Atoi(value)
-		if err != nil || count > 0 {
-			continue
-		}
-		return fmt.Errorf("adaptive timeout requires a positive test count, got %d", count)
-	}
-	return nil
-}
-
-func testCountValue(flags []string, index int) (string, bool) {
-	if value, found := strings.CutPrefix(flags[index], "-count="); found {
-		return value, true
-	}
-	if flags[index] != "-count" || index+1 >= len(flags) {
-		return "", false
-	}
-	return flags[index+1], true
 }
 
 func buildPerTestCoverageProfile(opts *models.Options, pkgFiles []string, modulePath string, tmpDir string, numWorkers int, extraTestFlags []string) *coverage.PerTestProfile {
@@ -989,7 +1012,12 @@ func shutdownAndCleanup(opts *models.Options, jobs chan execJob, jobWg *sync.Wai
 	console.Debug(opts, "Remove %q", tmpDir)
 }
 
-func finalizeResults(stdout, stderr io.Writer, opts *models.Options, report *models.Report, bl *baseline.File, moduleRoot string) int {
+func finalizeResults(stdout, stderr io.Writer, opts *models.Options, report *models.Report, bl *baseline.File, moduleRoot string, runMutantIDFound bool) int {
+	if opts.Exec.RunMutantID != "" && !runMutantIDFound {
+		fmt.Fprintf(stderr, "No mutant with ID %q was found\n", opts.Exec.RunMutantID)
+		return returnError
+	}
+
 	if handled, code := handleBaselineUpdate(stdout, stderr, opts, report, moduleRoot); handled {
 		return code
 	}
@@ -1259,8 +1287,8 @@ func (e mutationEdit) materialize(original []byte) ([]byte, error) {
 // stableMutationEditKey hashes the file identity, the edit's byte offsets, the
 // original text and the replacement, so two mutants are deduplicated only when
 // they produce byte-identical edits at the same location in the same file
-// (replicate mutago #103). Keys are 32-char MD5 hex strings to stay compatible
-// with the --blacklist file format.
+// (#103). Keys are 32-char MD5 hex strings to stay compatible with the
+// --blacklist file format.
 func stableMutationEditKey(file string, original []byte, edit mutationEdit) string {
 	h := md5.New()
 	fmt.Fprintf(h, "%s\x00%d\x00", file, edit.start)
@@ -1301,7 +1329,7 @@ func stableMutationKey(original, mutated []byte) string {
 // lookup uses the directive-adjusted filename. A third, line-only fallback
 // handles the rare case where a single coverage block spans a //line filename
 // change and is filed under a third filename; it is gated on directiveShifted
-// so it never applies to ordinary positions (see mutago #84).
+// so it never applies to ordinary positions (see #84).
 func mutationCovered(job execJob, startLine int) bool {
 	if job.coverProfile.IsCovered(job.source.absFile, startLine) {
 		return true
@@ -1319,7 +1347,7 @@ func mutationCovered(job execJob, startLine int) bool {
 // GenDecl (const, var, type, import) in file. Declarations at package scope are
 // not executable statements, so `go test` coverage profiles never record them as
 // covered. The --coverage filter must therefore not skip mutations at such
-// positions, even when the profile has no entry for the line (see mutago #83).
+// positions, even when the profile has no entry for the line (see #83).
 func isPackageLevelDecl(file ast.Node, pos token.Pos) bool {
 	f, ok := file.(*ast.File)
 	if !ok {
@@ -1350,7 +1378,7 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex, stdout io.Wri
 	if notCovered {
 		mu.Lock()
 		defer mu.Unlock()
-		recordNotCovered(opts, stats, mutant, mutantLocation(mutant))
+		recordNotCovered(opts, stats, mutant, mutantLocation(opts, mutant))
 		return
 	}
 
@@ -1371,16 +1399,17 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex, stdout io.Wri
 	if skipForMutantID(job) {
 		return
 	}
+	job.runMutantIDFound.Store(job.runMutantID != "")
 
 	execExitCode := mutateExec(job, &mutant)
 	console.Debug(opts, "Exited with %d", execExitCode)
 
 	mu.Lock()
 	defer mu.Unlock()
-	recordMutantResult(opts, stats, mutant, execExitCode, mutantLocation(mutant))
+	recordMutantResult(opts, stats, mutant, execExitCode, mutantLocation(opts, mutant))
 }
 
-func mutantLocation(mutant models.Mutant) string {
+func mutantLocation(opts *models.Options, mutant models.Mutant) string {
 	loc := mutant.Mutator.OriginalFilePath
 	if rel, err := filepath.Rel(".", loc); err == nil {
 		loc = filepath.ToSlash(rel)
@@ -1388,23 +1417,30 @@ func mutantLocation(mutant models.Mutant) string {
 	if mutant.Mutator.OriginalStartLine > 0 {
 		loc = fmt.Sprintf("%s:%d", loc, mutant.Mutator.OriginalStartLine)
 	}
+	if (opts.General.Debug || opts.General.Verbose) && mutant.Checksum != "" {
+		return fmt.Sprintf("%s (%s) [checksum: %s]", loc, mutant.Mutator.MutatorName, mutant.Checksum)
+	}
 	return fmt.Sprintf("%s (%s)", loc, mutant.Mutator.MutatorName)
 }
 
-func skipForGitDiff(job execJob, gitChangedLines gitdiff.ChangedLines) bool {
+func isGitDiffSkipped(gitChangedLines gitdiff.ChangedLines, relFile, absFile string, lineNum int) bool {
 	if gitChangedLines == nil {
 		return false
 	}
+	changed := gitdiff.IsRelativeLineChanged(gitChangedLines, relFile, lineNum)
+	if relFile == "" {
+		changed = gitdiff.IsLineChanged(gitChangedLines, absFile, lineNum)
+	}
+	return !changed
+}
+
+func skipForGitDiff(job execJob, gitChangedLines gitdiff.ChangedLines) bool {
 	lineNum := int(job.mutant.Mutator.OriginalStartLine)
-	changed := gitdiff.IsRelativeLineChanged(gitChangedLines, job.source.relFile, lineNum)
-	if job.source.relFile == "" {
-		changed = gitdiff.IsLineChanged(gitChangedLines, job.source.absFile, lineNum)
+	if isGitDiffSkipped(gitChangedLines, job.source.relFile, job.source.absFile, lineNum) {
+		console.Debug(job.opts, "Skip %q at line %d (not in git diff)", job.source.mutationFile, lineNum)
+		return true
 	}
-	if changed {
-		return false
-	}
-	console.Debug(job.opts, "Skip %q at line %d (not in git diff)", job.source.mutationFile, lineNum)
-	return true
+	return false
 }
 
 func toRelPath(absOrRel, moduleRoot string) string {
@@ -1486,11 +1522,10 @@ func prepareOverlay(tmpDir, file, mutationFile string) (string, int) {
 }
 
 // mutantGoTestArgs assembles the `go test` argument list for a mutant run.
-// Mutants are not meant to be lint-clean, so `go vet` is disabled by default:
-// `go test` runs a vet subset that exits 1 on any diagnostic, and
+// Mutants are not meant to be lint-clean, so `go vet` is disabled by default
+// (see #106): `go test` runs a vet subset that exits 1 on any diagnostic, and
 // mapTestExitToResult would count such a mutant as KILLED even though no test
-// failed. An explicit -vet in the user's extra test flags
-// wins.
+// failed. An explicit -vet in the user's extra test flags wins.
 func mutantGoTestArgs(overlayName string, timeoutSeconds uint, extraTestFlags []string, runFilter, pkgName string) []string {
 	args := []string{"test", "-overlay=" + overlayName, "-timeout", fmt.Sprintf("%ds", timeoutSeconds)}
 	args = append(args, extraTestFlags...)
@@ -1536,6 +1571,17 @@ func runGoTest(ctx context.Context, opts *models.Options, pkg *types.Package, ov
 
 	if opts.General.Debug {
 		fmt.Printf("%s\n", test)
+	}
+	return classifyGoTestResult(execExitCode, test)
+}
+
+// classifyGoTestResult distinguishes a test failure from a package build or
+// setup failure. All make `go test` exit 1, but a mutant that never compiled
+// or whose package failed setup was not killed by a test and must be skipped
+// instead.
+func classifyGoTestResult(execExitCode int, output []byte) int {
+	if execExitCode == 1 && (bytes.Contains(output, []byte("[build failed]")) || bytes.Contains(output, []byte("[setup failed]"))) {
+		return 2
 	}
 	return execExitCode
 }

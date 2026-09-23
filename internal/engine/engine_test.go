@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jonbaldie/go-mutesting/v2"
 	"github.com/jonbaldie/go-mutesting/v2/internal/gitdiff"
 	"github.com/jonbaldie/go-mutesting/v2/internal/models"
 
@@ -216,6 +217,67 @@ func TestSkipForGitDiffUsesOriginalASTLine(t *testing.T) {
 	}
 }
 
+func TestIsGitDiffSkipped(t *testing.T) {
+	// When gitChangedLines is nil, nothing is skipped.
+	if isGitDiffSkipped(nil, "foo.go", "/repo/foo.go", 10) {
+		t.Error("expected isGitDiffSkipped to be false when gitChangedLines is nil")
+	}
+
+	gitChangedLines := gitdiff.ChangedLines{
+		"pkg/foo.go": {{Start: 10, End: 15}},
+	}
+
+	// Line within range for relative path: not skipped.
+	if isGitDiffSkipped(gitChangedLines, "pkg/foo.go", "/repo/pkg/foo.go", 12) {
+		t.Error("expected line 12 to not be skipped")
+	}
+
+	// Line outside range for relative path: skipped.
+	if !isGitDiffSkipped(gitChangedLines, "pkg/foo.go", "/repo/pkg/foo.go", 20) {
+		t.Error("expected line 20 to be skipped")
+	}
+
+	// Fallback to absFile when relFile is empty.
+	if isGitDiffSkipped(gitChangedLines, "", "/repo/pkg/foo.go", 12) {
+		t.Error("expected line 12 with absFile to not be skipped")
+	}
+	if !isGitDiffSkipped(gitChangedLines, "", "/repo/pkg/foo.go", 20) {
+		t.Error("expected line 20 with absFile to be skipped")
+	}
+}
+
+func TestRecordOneMutationDryRunGitDiff(t *testing.T) {
+	opts := &models.Options{}
+	opts.General.DryRun = true
+	gitChangedLines := gitdiff.ChangedLines{
+		"foo.go": {{Start: 10, End: 10}},
+	}
+	r := &mutationRun{
+		opts:            opts,
+		gitChangedLines: gitChangedLines,
+		moduleRoot:      "/repo",
+	}
+	m := mutatorItem{Name: "test-mutator"}
+	fc := &fileContext{
+		absFile: "/repo/foo.go",
+	}
+
+	dryRunCounts := make(map[string]int)
+	dryRunGlobalTotals := make(map[string]int)
+
+	// Mutation on changed line 10 should be counted.
+	recordOneMutation(r, m, fc, mutesting.PositionedMutation{}, 0, 10, nil, dryRunCounts, dryRunGlobalTotals)
+	if dryRunCounts["test-mutator"] != 1 || dryRunGlobalTotals["test-mutator"] != 1 {
+		t.Errorf("expected mutation on line 10 to be counted, got counts=%v, globals=%v", dryRunCounts, dryRunGlobalTotals)
+	}
+
+	// Mutation on unchanged line 20 should NOT be counted.
+	recordOneMutation(r, m, fc, mutesting.PositionedMutation{}, 1, 20, nil, dryRunCounts, dryRunGlobalTotals)
+	if dryRunCounts["test-mutator"] != 1 || dryRunGlobalTotals["test-mutator"] != 1 {
+		t.Errorf("expected mutation on line 20 to not be counted, got counts=%v, globals=%v", dryRunCounts, dryRunGlobalTotals)
+	}
+}
+
 // TestEngineCoverageHonorsTestFlags ensures --test-flags reaches the initial
 // coverage collection step. Without -short, testdata/covflags fails (simulating
 // missing credentials) and mutants are incorrectly marked NOT COVERED.
@@ -256,7 +318,7 @@ func TestEngineCoverageHonorsTestFlags(t *testing.T) {
 }
 
 // TestEngineCoverageTimeoutFailsBaseline ensures --coverage passes the execution timeout
-// to the initial coverage collection step and fails fast if the unmutated test suite times out.
+// to the initial coverage collection step and fails fast if the unmutated test suite times out (#129).
 func TestEngineCoverageTimeoutFailsBaseline(t *testing.T) {
 	_ = os.MkdirAll("./testdata", 0755)
 	tempDir, err := os.MkdirTemp("./testdata", "covtimeout-*")
@@ -396,88 +458,6 @@ func TestCovered(t *testing.T) {
 	}
 }
 
-func TestCheckMsiGate_FloatPrecision(t *testing.T) {
-	// 29 out of 100 mutants killed = exactly 29.0%
-	report := &models.Report{
-		Stats: models.Stats{
-			TotalMutantsCount: 100,
-			KilledCount:       29,
-			EscapedCount:      71,
-			Msi:               29.0 / 100.0,
-		},
-	}
-	if checkMsiGate(report, 29.0) {
-		t.Fatalf("checkMsiGate failed for exact 29%% threshold")
-	}
-
-	// 28 out of 100 mutants killed = 28.0%, should fail 29.0% gate
-	reportBelow := &models.Report{
-		Stats: models.Stats{
-			TotalMutantsCount: 100,
-			KilledCount:       28,
-			EscapedCount:      72,
-			Msi:               28.0 / 100.0,
-		},
-	}
-	if !checkMsiGate(reportBelow, 29.0) {
-		t.Fatalf("checkMsiGate expected to fail for 28%% when min is 29%%")
-	}
-}
-
-func TestCheckCoveredMsiGate_FloatPrecision(t *testing.T) {
-	// 58 out of 100 covered mutants killed = exactly 58.0%
-	report := &models.Report{
-		HasCoverage: true,
-		Stats: models.Stats{
-			TotalMutantsCount: 100,
-			KilledCount:       58,
-			EscapedCount:      42,
-			CoveredCodeMsi:    58.0 / 100.0,
-		},
-	}
-	if checkCoveredMsiGate(report, 58.0) {
-		t.Fatalf("checkCoveredMsiGate failed for exact 58%% threshold")
-	}
-
-	// 57 out of 100 covered mutants killed = 57.0%, should fail 58.0% gate
-	reportBelow := &models.Report{
-		HasCoverage: true,
-		Stats: models.Stats{
-			TotalMutantsCount: 100,
-			KilledCount:       57,
-			EscapedCount:      43,
-			CoveredCodeMsi:    57.0 / 100.0,
-		},
-	}
-	if !checkCoveredMsiGate(reportBelow, 58.0) {
-		t.Fatalf("checkCoveredMsiGate expected to fail for 57%% when min is 58%%")
-	}
-}
-
-func vetArgs(args []string) []string {
-	vets := make([]string, 0, 2)
-	for _, arg := range args {
-		if arg == "-vet" || arg == "--vet" || strings.HasPrefix(arg, "-vet=") || strings.HasPrefix(arg, "--vet=") {
-			vets = append(vets, arg)
-		}
-	}
-	return vets
-}
-
-func TestMutantGoTestArgsDisablesVetByDefault(t *testing.T) {
-	args := mutantGoTestArgs("overlay.json", 60, nil, "", "example")
-	if got := vetArgs(args); len(got) != 1 || got[0] != "-vet=off" {
-		t.Fatalf("expected exactly one -vet argument (-vet=off), got %v in %v", got, args)
-	}
-}
-
-func TestMutantGoTestArgsUserVetWins(t *testing.T) {
-	args := mutantGoTestArgs("overlay.json", 60, []string{"-vet=atomic"}, "", "example")
-	if got := vetArgs(args); len(got) != 1 || got[0] != "-vet=atomic" {
-		t.Fatalf("user -vet must win with exactly one -vet argument, got %v in %v", got, args)
-	}
-}
-
 // TestEngineCoverageRunsConstMutations is a regression test for #83: numeric
 // literals in package-level const (and var) declarations are never recorded as
 // covered by `go test` coverage profiles, so --coverage wrongly skipped them
@@ -572,7 +552,7 @@ func TestDouble(t *testing.T) {
 
 // TestEngineCoverageHonorsLineDirectives is a regression test for #84: a
 // //line directive shifts Go's coverage-profile line attribution to the
-// directive's line (and, for a named directive, its filename), while the tool
+// directive's line (and, for a named directive, its filename), while go-mutesting
 // reported the mutation's line using the adjusted line but looked up coverage
 // using the physical file path. Covered mutations on directive-shifted lines
 // were therefore classified NOT COVERED and skipped, understating MSI and
@@ -639,7 +619,7 @@ func TestEngineCoverageHonorsLineDirectives(t *testing.T) {
 	// The Plain mutation is reported at the directive-shifted line 204: the
 	// //line :200 directive shifts Sub's `return` to line 200 and, because the
 	// directive persists, Plain's `return` to line 204. Go records Plain's
-	// coverage block under the directive filename ("."), while the tool looked
+	// coverage block under the directive filename ("."), while go-mutesting looked
 	// up coverage under the physical file path — so Plain's covered mutation
 	// was wrongly classified NOT COVERED. It must be scored (KILLED here).
 	const shiftedLine = int64(204)
@@ -665,7 +645,7 @@ func TestEngineCoverageHonorsLineDirectives(t *testing.T) {
 
 // TestEngineBaselineRejectsBrokenBuild is a regression test for #85: without a
 // baseline check by default, a package that does not compile reported 100%
-// killed and exit 0 (a false green) — `go test` exits 1 for a build failure,
+// killed and exit 0 (a false-green) — `go test` exits 1 for a build failure,
 // which mapTestExitToResult classified as KILLED. A broken baseline must fail
 // fast with a tool error (exit 3) instead of a meaningless score.
 func TestEngineBaselineRejectsBrokenBuild(t *testing.T) {
@@ -708,5 +688,112 @@ func Add(a, b int) int {
 		res.Report.Stats.KilledCount == res.Report.Stats.TotalMutantsCount {
 		t.Fatalf("broken-build package reported all mutants KILLED (false green): killed=%d total=%d stdout=%q stderr=%q",
 			res.Report.Stats.KilledCount, res.Report.Stats.TotalMutantsCount, stdout.String(), stderr.String())
+	}
+}
+
+func TestCheckMsiGate_FloatPrecision(t *testing.T) {
+	// 29 out of 100 mutants killed = exactly 29.0%
+	report := &models.Report{
+		Stats: models.Stats{
+			TotalMutantsCount: 100,
+			KilledCount:       29,
+			EscapedCount:      71,
+			Msi:               29.0 / 100.0,
+		},
+	}
+	if checkMsiGate(report, 29.0) {
+		t.Fatalf("checkMsiGate failed for exact 29%% threshold")
+	}
+
+	// 28 out of 100 mutants killed = 28.0%, should fail 29.0% gate
+	reportBelow := &models.Report{
+		Stats: models.Stats{
+			TotalMutantsCount: 100,
+			KilledCount:       28,
+			EscapedCount:      72,
+			Msi:               28.0 / 100.0,
+		},
+	}
+	if !checkMsiGate(reportBelow, 29.0) {
+		t.Fatalf("checkMsiGate expected to fail for 28%% when min is 29%%")
+	}
+}
+
+func TestCheckCoveredMsiGate_FloatPrecision(t *testing.T) {
+	// 58 out of 100 covered mutants killed = exactly 58.0%
+	report := &models.Report{
+		HasCoverage: true,
+		Stats: models.Stats{
+			TotalMutantsCount: 100,
+			KilledCount:       58,
+			EscapedCount:      42,
+			CoveredCodeMsi:    58.0 / 100.0,
+		},
+	}
+	if checkCoveredMsiGate(report, 58.0) {
+		t.Fatalf("checkCoveredMsiGate failed for exact 58%% threshold")
+	}
+
+	// 57 out of 100 covered mutants killed = 57.0%, should fail 58.0% gate
+	reportBelow := &models.Report{
+		HasCoverage: true,
+		Stats: models.Stats{
+			TotalMutantsCount: 100,
+			KilledCount:       57,
+			EscapedCount:      43,
+			CoveredCodeMsi:    57.0 / 100.0,
+		},
+	}
+	if !checkCoveredMsiGate(reportBelow, 58.0) {
+		t.Fatalf("checkCoveredMsiGate expected to fail for 57%% when min is 58%%")
+	}
+}
+
+func vetArgs(args []string) []string {
+	vets := make([]string, 0, 2)
+	for _, arg := range args {
+		if arg == "-vet" || arg == "--vet" || strings.HasPrefix(arg, "-vet=") || strings.HasPrefix(arg, "--vet=") {
+			vets = append(vets, arg)
+		}
+	}
+	return vets
+}
+
+func TestMutantGoTestArgsDisablesVetByDefault(t *testing.T) {
+	args := mutantGoTestArgs("overlay.json", 60, nil, "", "example")
+	if got := vetArgs(args); len(got) != 1 || got[0] != "-vet=off" {
+		t.Fatalf("expected exactly one -vet argument (-vet=off), got %v in %v", got, args)
+	}
+}
+
+func TestMutantGoTestArgsUserVetWins(t *testing.T) {
+	args := mutantGoTestArgs("overlay.json", 60, []string{"-vet=atomic"}, "", "example")
+	if got := vetArgs(args); len(got) != 1 || got[0] != "-vet=atomic" {
+		t.Fatalf("user -vet must win with exactly one -vet argument, got %v in %v", got, args)
+	}
+}
+
+func TestClassifyGoTestBuildFailureAsSkipped(t *testing.T) {
+	buildFailure := []byte("# example.com/aliasbug\nalias.go:8:9: undefined: url\nFAIL\texample.com/aliasbug [build failed]\n")
+	if got := classifyGoTestResult(1, buildFailure); got != 2 {
+		t.Fatalf("expected build failure to be skipped, got exit code %d", got)
+	}
+
+	setupFailure := []byte("FAIL\texample.com/aliasbug [setup failed]\n")
+	if got := classifyGoTestResult(1, setupFailure); got != 2 {
+		t.Fatalf("expected setup failure to be skipped, got exit code %d", got)
+	}
+
+	testFailure := []byte("--- FAIL: TestValue (0.00s)\nFAIL\texample.com/aliasbug\t0.001s\n")
+	if got := classifyGoTestResult(1, testFailure); got != 1 {
+		t.Fatalf("expected test failure to remain a killed result, got exit code %d", got)
+	}
+
+	if got := classifyGoTestResult(0, buildFailure); got != 0 {
+		t.Fatalf("expected successful go test to remain successful, got exit code %d", got)
+	}
+
+	if got := classifyGoTestResult(0, setupFailure); got != 0 {
+		t.Fatalf("expected successful go test to remain successful, got exit code %d", got)
 	}
 }

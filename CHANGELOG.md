@@ -6,14 +6,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.15] — 2026-09-23
+
+Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from go-mutesting v2.10.6).
+
 ### Added
 - Resource-safe mutation guidance in `CLAUDE.md` for Fleet runs: set `GOMAXPROCS=1`, pass `--workers=1`, use a finite `--exec-timeout`, and cap CPU/memory in development containers (replicate mutago #123).
+- Mutation checksums in debug output and JSON reports so `--blacklist` files can be populated from a run (replicate mutago #131).
 
 ### Fixed
-- `astutil` no longer builds zero-value struct literals for unexported types owned by another package, so `statement/return` stops emitting references such as `b.secret{}` that cannot compile (replicate mutago #201).
-- `arithmetic/assignment` now skips mutating `<<=` and `>>=` to `=` when the shift count type is not assignable to the shifted variable, or when an untyped constant shift count overflows the left-hand side type (e.g. `int8` `x <<= 200`), preventing uncompilable mutants and false kills (replicate mutago #139, #200).
-- `scripts/exec/test-mutated-package.sh` and `scripts/exec/test-current-directory.sh` now report mutants that fail to compile as SKIP instead of KILLED. `go test` exits 1 for a build failure just as it does for a failing test, so both scripts credited uncompilable mutants as kills and inflated MSI (replicate mutago #157).
-- Clean up temporary mutation directories and overlay files upon process interruption (SIGINT / SIGTERM) unless `--do-not-remove-tmp-folder` is set (replicate mutago #134).
+- `select/default-remove` now skips select statements whose only clause is `default`, preventing an empty `select {}` mutant that blocks until timeout (replicate mutago #209 / v2.10.15).
+- `astutil.structTypeExpr` returns `nil` instead of synthesizing an unimported package selector when a struct type's package is only transitively imported (replicate mutago #207).
+- Branch mutators and `statement/remove` check for unsafe imports before mutating (replicate mutago #202).
+- `astutil` no longer builds zero-value struct literals for unexported cross-package struct types (replicate mutago #201).
+- `arithmetic/assignment` skips `<<=`/`>>=` → `=` when the shift count is not assignable or an untyped constant overflows the LHS (replicate mutago #139, #200).
+- `numbers/incrementer` skips signed integer minimum boundaries under unary minus (replicate mutago #199).
+- Agentic JSON docs now describe `msi` as a 0–1 ratio matching the emitted data (replicate mutago #167).
+- `mutator-disable-regexp` patterns may contain spaces (replicate mutago #166).
+- Line and regexp annotations apply to `statement/return` mutations (replicate mutago #165).
+- `--dry-run` applies `--git-diff-lines` / `--git-diff-base` filtering (replicate mutago #164).
+- Unknown `--run-mutant-id` values exit 3 instead of succeeding silently (replicate mutago #163).
+- `[setup failed]` package errors classify as SKIP, not KILLED (replicate mutago #160).
+- `select/case-remove` and `select/default-remove` skip mutations that leave locals or imports unused (replicate mutago #159).
+- `arithmetic/assign_invert` skips `*=` → `/=` when the right-hand operand is constant zero (replicate mutago #158).
+- Exec scripts report uncompilable mutants as SKIP, not KILLED (replicate mutago #157).
+- `astutil.zeroExprForType` unaliases `*types.Alias` (replicate mutago #156).
+- `numbers/decrementer` and `numbers/incrementer` avoid out-of-range typed integer literals (replicate mutago #141).
+- `arithmetic/base` skips `*` → `/` when the right-hand operand is constant zero (replicate mutago #140).
+- `arithmetic/negate` skips signed integer minimum boundary constants (replicate mutago #138).
+- `expression/context-nil`, `composite/field-clear`, and `loop/condition` skip mutations that leave locals or imports unused (replicate mutago #137).
+- `astutil.CreateNoopOfStatements` skips uninstantiated generic functions and types (replicate mutago #136).
+- `--timeout-coefficient` measures the clean suite under a generous timeout before applying `--exec-timeout` (replicate mutago #135).
+- Clean up temporary mutation directories and overlay files on interrupt unless `--do-not-remove-tmp-folder` is set (replicate mutago #134).
+- Clear diagnostic when a string flag swallows a positional target (replicate mutago #130).
+- Documented `true` defaults for `skip_without_test` and `skip_with_build_tags` when unconfigured (replicate mutago #132).
+
+### Changed
+- Bump Go toolchain pin from 1.26.5 to 1.26.6 in `go.mod`, clearing reachable standard-library vulnerabilities (replicate mutago #118 / v2.10.7).
 
 ## [v2.10.5] — 2026-09-11
 
@@ -606,4 +635,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 [v2.10.3]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.2...v2.10.3
 [v2.10.4]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.3...v2.10.4
 [v2.10.5]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.4...v2.10.5
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.5...HEAD
+[v2.10.15]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.6...v2.10.15
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.15...HEAD

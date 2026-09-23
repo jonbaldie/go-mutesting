@@ -14,10 +14,10 @@ import (
 )
 
 func TestMainHelperProcess(t *testing.T) {
-	if os.Getenv("GOMUTESTING_TEST_HELPER_PROCESS") != "1" {
+	if os.Getenv("GO_MUTESTING_TEST_HELPER_PROCESS") != "1" {
 		return
 	}
-	args := strings.Fields(os.Getenv("GOMUTESTING_TEST_ARGS"))
+	args := strings.Fields(os.Getenv("GO_MUTESTING_TEST_ARGS"))
 	os.Exit(mainCmd(args))
 }
 
@@ -43,9 +43,9 @@ func TestSignalInterruptCleansUpTmpDir(t *testing.T) {
 
 			cmd := exec.Command(os.Args[0], "-test.run=^TestMainHelperProcess$")
 			cmd.Env = append(os.Environ(),
-				"GOMUTESTING_TEST_HELPER_PROCESS=1",
+				"GO_MUTESTING_TEST_HELPER_PROCESS=1",
 				"TMPDIR="+isolatedTmp,
-				"GOMUTESTING_TEST_ARGS=--exec "+execScript+" ../../example",
+				"GO_MUTESTING_TEST_ARGS=--exec "+execScript+" ../../example",
 			)
 
 			err = cmd.Start()
@@ -57,7 +57,7 @@ func TestSignalInterruptCleansUpTmpDir(t *testing.T) {
 				return err == nil
 			}, 3*time.Second, 20*time.Millisecond, "timed out waiting for child process to start exec")
 
-			// Check that at least one mutago temporary folder exists before interrupting
+			// Check that at least one go-mutesting temporary folder exists before interrupting
 			entries, err := os.ReadDir(isolatedTmp)
 			require.NoError(t, err)
 			var tmpDirsBefore []string
@@ -77,7 +77,7 @@ func TestSignalInterruptCleansUpTmpDir(t *testing.T) {
 			// Acceptance criteria: Signal handling exits with a non-zero exit status.
 			assert.Error(t, waitErr, "expected non-zero exit status on signal termination")
 
-			// Acceptance criteria: Terminating a running mutago process with SIGINT or SIGTERM cleans up its temporary directory and overlay files.
+			// Acceptance criteria: Terminating a running go-mutesting process with SIGINT or SIGTERM cleans up its temporary directory and overlay files.
 			entriesAfter, err := os.ReadDir(isolatedTmp)
 			require.NoError(t, err)
 			var leaked []string
@@ -102,9 +102,9 @@ func TestSignalInterruptRetainsTmpDirWithFlag(t *testing.T) {
 
 	cmd := exec.Command(os.Args[0], "-test.run=^TestMainHelperProcess$")
 	cmd.Env = append(os.Environ(),
-		"GOMUTESTING_TEST_HELPER_PROCESS=1",
+		"GO_MUTESTING_TEST_HELPER_PROCESS=1",
 		"TMPDIR="+isolatedTmp,
-		"GOMUTESTING_TEST_ARGS=--do-not-remove-tmp-folder --exec "+execScript+" ../../example",
+		"GO_MUTESTING_TEST_ARGS=--do-not-remove-tmp-folder --exec "+execScript+" ../../example",
 	)
 
 	err = cmd.Start()
@@ -138,9 +138,9 @@ func TestNormalRunCleansUpTmpDir(t *testing.T) {
 
 	cmd := exec.Command(os.Args[0], "-test.run=^TestMainHelperProcess$")
 	cmd.Env = append(os.Environ(),
-		"GOMUTESTING_TEST_HELPER_PROCESS=1",
+		"GO_MUTESTING_TEST_HELPER_PROCESS=1",
 		"TMPDIR="+isolatedTmp,
-		"GOMUTESTING_TEST_ARGS=--match foo --exec-timeout 5 ../../example",
+		"GO_MUTESTING_TEST_ARGS=--match foo --exec-timeout 5 ../../example",
 	)
 
 	err := cmd.Run()
@@ -202,9 +202,9 @@ func TestCalc(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-test.run=^TestMainHelperProcess$")
 	cmd.Dir = pkgDir
 	cmd.Env = append(os.Environ(),
-		"GOMUTESTING_TEST_HELPER_PROCESS=1",
+		"GO_MUTESTING_TEST_HELPER_PROCESS=1",
 		"TMPDIR="+isolatedTmp,
-		"GOMUTESTING_TEST_ARGS=--exec-timeout 10 .",
+		"GO_MUTESTING_TEST_ARGS=--exec-timeout 10 .",
 	)
 
 	err = cmd.Start()
