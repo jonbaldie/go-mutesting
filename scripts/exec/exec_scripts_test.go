@@ -1,5 +1,5 @@
 // Package exec_test drives the shipped --exec helper scripts end to end and
-// asserts the exit codes mutago's engine relies on: 0 KILLED, 1 ESCAPED,
+// asserts the exit codes go-mutesting's engine relies on: 0 KILLED, 1 ESCAPED,
 // 2 SKIP.
 package exec_test
 
@@ -49,7 +49,7 @@ func TestFoo(t *testing.T) {
 }
 `)
 
-	// The mutation lives outside the package directory, the way mutago writes
+	// The mutation lives outside the package directory, the way go-mutesting writes
 	// it, so the only build error is the mutation itself.
 	mutationFile = write(filepath.Dir(modDir), "mutant.go", "package testmod\n\nfunc foo() int { "+mutantBody+" }\n")
 	return modDir, mutationFile

@@ -8,6 +8,8 @@ Set `json_output: true` in the configuration file to write `report.json`. Its
 top-level `sources` object maps each source-file path to its original text.
 Mutants refer to that path through `mutator.originalFilePath`, so consumers can
 look up the source once instead of receiving a duplicate copy for every mutant.
+Each mutant also includes a `checksum` field containing the 32-character
+lowercase checksum accepted by `--blacklist`.
 
 The legacy `mutator.originalSourceCode` and `mutator.mutatedSourceCode` fields
 remain accepted by the Go model for compatibility, but new reports omit them.
@@ -44,7 +46,7 @@ Writes `go-mutesting-summary.json`. Useful for CI badges, dashboards, and downst
 | `mutationCodeCoverage` | int | Lines covered by the coverage profile |
 | `coveredCodeMsi` | float | MSI restricted to covered lines only, range 0–1 |
 
-`msi` and `coveredCodeMsi` are in the **0–1 range** (not 0–100). Note that the agentic JSON report (`--logger-agentic-json`) uses the **0–100 percentage** scale for its `msi` field — both are correct within their respective formats, but scripts that consume both must account for the difference.
+`msi` and `coveredCodeMsi` are in the **0–1 range** (not 0–100). Both the summary JSON report and the agentic JSON report (`--logger-agentic-json`) use a **0–1 ratio** for `msi`.
 
 ## `--logger-agentic-json`
 
@@ -53,12 +55,13 @@ Writes `go-mutesting-agentic.json`. A richer payload designed for LLM consumptio
 ```json
 {
   "generated_at": "2026-05-19T08:13:38Z",
-  "msi": 58.57,
+  "msi": 0.5857,
   "escaped_count": 5,
   "reminder": "A mutant is an example of how this code could be wrong...",
   "mutants": [
     {
       "id": "abc123",
+      "checksum": "a1b2c3d4e5f60123456789abcdef0123",
       "file": "pkg/foo/foo.go",
       "line": 42,
       "mutator": "branch/if",
@@ -76,10 +79,11 @@ Writes `go-mutesting-agentic.json`. A richer payload designed for LLM consumptio
 | Field | Type | Description |
 | :---- | :--- | :---------- |
 | `generated_at` | string | RFC 3339 timestamp of the run |
-| `msi` | float | Overall MSI as a **percentage (0–100)** — note this differs from the summary JSON, which uses a 0–1 ratio |
+| `msi` | float | Overall MSI as a 0–1 ratio |
 | `escaped_count` | int | Number of survived mutants |
 | `reminder` | string | A plain-English reminder about how to interpret mutants — useful context when feeding the file to an LLM |
 | `mutants[].id` | string | Stable hash of file + mutator + diff — survives refactors that shift line numbers |
+| `mutants[].checksum` | string | 32-character lowercase checksum accepted by `--blacklist` |
 | `mutants[].file` | string | Path to the mutated file, relative to the module root |
 | `mutants[].line` | int | Line number of the mutation |
 | `mutants[].mutator` | string | Mutator name (e.g. `branch/if`, `statement/return`) |

@@ -6,6 +6,7 @@ import (
 	"go/types"
 
 	"github.com/jonbaldie/go-mutesting/v2/astutil"
+	"github.com/jonbaldie/go-mutesting/v2/internal/annotation"
 	"github.com/jonbaldie/go-mutesting/v2/mutator"
 )
 
@@ -50,6 +51,9 @@ func mutateReturnStmt(pkg *types.Package, info *types.Info, l []ast.Stmt, stmtId
 	if !ok || len(ret.Results) == 0 {
 		return nil
 	}
+	if annotation.HandleBlockStmt(ret, "statement/return") {
+		return nil
+	}
 
 	var mutations []mutator.Mutation
 	for resIdx := range ret.Results {
@@ -67,7 +71,7 @@ func mutateReturnResult(pkg *types.Package, info *types.Info, l []ast.Stmt, stmt
 		return mutator.Mutation{}, false
 	}
 
-	zero := astutil.ZeroExprForType(t, pkg)
+	zero := astutil.ZeroExprForTypeAt(t, pkg, info, result.Pos())
 	if zero == nil || isAlreadyZero(result) || astutil.HasUnsafeImport(info, result) {
 		return mutator.Mutation{}, false
 	}
