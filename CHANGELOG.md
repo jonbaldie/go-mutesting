@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.16] — 2026-09-24
+
+Replicates quality-gates/mutago v2.10.16.
+
+### Fixed
+- Apply `ignore_source_lines` and mutation annotations to physical source lines when `//line` directives alter reported positions, avoiding missed or mis-targeted exclusions.
+- Prevent empty coverage-profile filenames from making coverage and per-test lookups match unrelated files, and distinguish empty suffix keys from misses in git-diff resolution.
+- Strip LF and CRLF terminators before matching `mutator-disable-regexp` patterns so end-of-line anchors work on all source lines.
+- Correct the agentic JSON `description` text for `arithmetic/assignment`, `loop/break`, and `loop/range_break` so it matches what each mutator actually does.
+
 ## [v2.10.15] — 2026-09-23
 
 Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from go-mutesting v2.10.6).
@@ -636,4 +646,5 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.4]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.3...v2.10.4
 [v2.10.5]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.4...v2.10.5
 [v2.10.15]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.6...v2.10.15
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.15...HEAD
+[v2.10.16]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.15...v2.10.16
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.16...HEAD
