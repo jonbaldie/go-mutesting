@@ -52,6 +52,15 @@ if ! git rev-parse --verify origin/master >/dev/null 2>&1; then
 	exit 1
 fi
 
+if ! CHANGED_GO_FILES=$(git diff --name-only "origin/master...$HEAD_SHA" -- '*.go'); then
+	printf 'FAIL: could not determine changed Go files against origin/master.\n' >&2
+	exit 1
+fi
+if [ -z "$CHANGED_GO_FILES" ]; then
+	echo "pre-push: no Go source changes in the pushed diff; mutation gate is not applicable."
+	exit 0
+fi
+
 TMP_DIR=$(mktemp -d)
 CHECKOUT_DIR="$TMP_DIR/checkout"
 GO_MUTESTING_BIN="$TMP_DIR/go-mutesting"
