@@ -82,3 +82,7 @@ Mutant test runs pass `-vet=off` to `go test` by default. A mutant is not meant 
 | 0 | All mutations tested; all quality gates passed |
 | 3 | Tool or test error |
 | 4 | A quality gate was not met (`--min-msi`, `--min-covered-msi`, or `--fail-on-escaped`) |
+
+## Related project report
+
+[A CLI exploratory-testing report for mutago](https://github.com/quality-gates/mutago/blob/main/docs/exploratory-testing/2026-09-26-cli-afk/README.md) documents coverage, per-test filtering, diff scoping, report output, and quality-gate workflows. That run tested `mutago`; it is a related-project reference, not a verification report for `go-mutesting`.

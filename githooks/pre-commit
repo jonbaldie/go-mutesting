@@ -123,20 +123,30 @@ else
 fi
 
 # --- go test ./... (CLAUDE.md build & test step) -------------------------------
-# The integration tests in cmd/go-mutesting/main_test.go invoke the mutation binary
-# against example/example.go and can leave it mutated; restore its pre-hook content.
+# The CLI integration tests mutate the example tree. Test example/sub first,
+# then omit it from the remaining batch so those mutations cannot race its tests.
+# Restore both example files afterward in case the integration run leaves a mutant.
 note "go test ./..."
 EXAMPLE_BACKUP=$(mktemp)
+EXAMPLE_SUB_BACKUP=$(mktemp)
 cp example/example.go "$EXAMPLE_BACKUP"
-restore_example() {
+cp example/sub/sub.go "$EXAMPLE_SUB_BACKUP"
+restore_examples() {
 	cp "$EXAMPLE_BACKUP" example/example.go
-	rm -f "$EXAMPLE_BACKUP"
+	cp "$EXAMPLE_SUB_BACKUP" example/sub/sub.go
+	rm -f "$EXAMPLE_BACKUP" "$EXAMPLE_SUB_BACKUP"
 }
-trap restore_example EXIT
-if ! go test ./...; then
-	fail "go test failed"
+trap restore_examples EXIT
+if ! go test ./example/sub; then
+	fail "go test ./example/sub failed"
 else
-	echo "ok"
+	echo "example/sub ok"
+fi
+GO_TEST_PACKAGES=$(go list ./... | grep -v '/example/sub$')
+if ! go test $GO_TEST_PACKAGES; then
+	fail "go test packages other than example/sub failed"
+else
+	echo "remaining packages ok"
 fi
 
 if [ "$FAIL" -ne 0 ]; then

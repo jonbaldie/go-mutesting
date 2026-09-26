@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+### Added
+- Link the CLI reference to the related mutago exploratory-testing report, clearly scoped as a sibling-project reference.
+
+### Fixed
+- Run `example/sub` tests before CLI mutation integration tests in the pre-commit hook, then restore the shared example fixtures.
+
 ## [v2.10.16] — 2026-09-24
 
 Replicates quality-gates/mutago v2.10.16.
