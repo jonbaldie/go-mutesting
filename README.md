@@ -25,7 +25,8 @@ Beyond finding escaped mutants, go-mutesting can enforce quality gates in CI —
 | Compact stats JSON for badges/dashboards | `--logger-summary-json` |
 | Per-mutator allowlist / denylist in config | `enable_mutators`, `disable_mutators` |
 | Extra flags for every `go test` call | `--test-flags` |
-| Vet disabled for mutant runs (`-vet=off`) | `--test-flags=-vet=all` to re-enable |
+| Vet disabled for built-in `go test` runs (`-vet=off`) | `--test-flags=-vet=all` to re-enable |
+| Mutant runs stop at the first failing test (`-failfast`) | `--test-flags=-failfast=false` to run every test |
 | Fine-grained output filter | `--output-statuses` |
 | Quiet mode — suppress killed/skip noise | `--quiet` |
 | Suppress diff output | `--no-diffs` |
@@ -129,7 +130,7 @@ go-mutesting parse.go example/ github.com/jonbaldie/go-mutesting/v2/mutator/...
 Every mutation has to be tested using an [exec command](#write-mutation-exec-commands). By default the built-in exec command is used, which tests a mutation using the following steps:
 
 - Replace the original file with the mutation.
-- Execute all tests of the package of the mutated file, with `go vet` disabled (`-vet=off`) so a vet diagnostic on mutated code is not miscounted as a kill. Pass your own `-vet` via `--test-flags` to re-enable it.
+- Execute all tests of the package of the mutated file, with `go vet` disabled (`-vet=off`) so a vet diagnostic on mutated code is not miscounted as a kill. Pass your own `-vet` via `--test-flags` to re-enable it. The run uses `-failfast`, so no new tests start after the first failure.
 - Report if the mutation was killed.
 
 Alternatively the `--exec` argument can be used to invoke an external exec command. The [/scripts/exec](/scripts/exec) directory holds basic exec commands for Go projects. The [test-mutated-package.sh](/scripts/exec/test-mutated-package.sh) script implements all steps and almost all features of the built-in exec command. It can be for example used to test the [github.com/jonbaldie/go-mutesting/v2/example](/example) package.
@@ -420,7 +421,7 @@ Writes `go-mutesting-agentic.json` — a richer payload designed for LLM consump
 | `msi` | float | Overall MSI as a 0–1 ratio |
 | `escaped_count` | int | Number of survived mutants |
 | `reminder` | string | Plain-English reminder about how to interpret mutants; included as context for LLMs |
-| `mutants[].id` | string | Stable hash of file + mutator + diff — survives refactors |
+| `mutants[].id` | string | Stable hash of file + mutator + diff — survives refactors and does not depend on how the file target is spelled |
 | `mutants[].file` | string | Path to the mutated file, relative to the module root |
 | `mutants[].line` | int | Line number of the mutation |
 | `mutants[].mutator` | string | Mutator name (e.g. `branch/if`) |
@@ -449,9 +450,12 @@ func CalculateDiscount(price float64) float64 {
 }
 ```
 
-2. `// mutator-disable-next-line <mutator1>, <mutator2>` — disables mutations on the next line. Use `*` for all mutators.
+2. `// mutator-disable-next-line <mutator1>, <mutator2>` — disables mutations on the next line. Omit the list, or use `*`, to disable every mutator.
 
 ```go
+// mutator-disable-next-line
+x = 42
+
 // mutator-disable-next-line *
 x = 42
 
@@ -461,12 +465,13 @@ if x > 0 {
 }
 ```
 
-3. `// mutator-disable-regexp <pattern> <mutator1>, <mutator2>` — disables mutations on any line in the file matching the regex. Use `*` for all mutators.
+3. `// mutator-disable-regexp <pattern> <mutator1>, <mutator2>` — disables mutations on any line in the file matching the regex. Omit the mutator list, or use `*`, to disable every mutator. A pattern-only annotation is `// mutator-disable-regexp <pattern>`.
 
 ```go
 s := MyStruct{name: "Go"}
 s.Method()
 
+// mutator-disable-regexp s\.Method\(\)
 // mutator-disable-regexp s\.Method\(\) *
 ```
 
