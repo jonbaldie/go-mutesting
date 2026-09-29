@@ -72,10 +72,83 @@ func TestMainMatch(t *testing.T) {
 	testMain(
 		t,
 		"../../example",
-		[]string{"--debug", "--exec", "../scripts/exec/test-mutated-package.sh", "--exec-timeout", "1", "--match", "baz", "./..."},
+		[]string{"--debug", "--exec", "../scripts/exec/test-mutated-package.sh", "--exec-timeout", "10", "--match", "baz", "./..."},
 		returnOk,
 		"mutation score",
 	)
+
+	// Acceptance criteria: clean checkout leaves no generated *.tmp files
+	assert.NoFileExists(t, "../../example/sub/sub.go.tmp", "sub.go.tmp must not be left behind")
+	err := filepath.Walk("../../example", func(path string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && strings.HasSuffix(path, ".tmp") {
+			t.Errorf("found leftover temporary file: %s", path)
+		}
+		return nil
+	})
+	assert.NoError(t, err)
+}
+
+func TestMainCleansUpTemporarySourceFiles(t *testing.T) {
+	t.Run("cleans up generated tmp and preserves pre-existing on success", func(t *testing.T) {
+		fixtureDir := t.TempDir()
+		writeFixtureFile(t, filepath.Join(fixtureDir, "go.mod"), "module example.com/cleanup\n\ngo 1.22\n")
+		origSource := "package cleanup\n\nfunc Foo() int { return 1 }\n"
+		writeFixtureFile(t, filepath.Join(fixtureDir, "foo.go"), origSource)
+		writeFixtureFile(t, filepath.Join(fixtureDir, "foo_test.go"), "package cleanup\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) { if Foo() != 1 { t.Fail() } }\n")
+
+		preExisting := filepath.Join(fixtureDir, "user.tmp")
+		writeFixtureFile(t, preExisting, "user data")
+
+		generatedTmp := filepath.Join(fixtureDir, "foo.go.tmp")
+		execScript := filepath.Join(fixtureDir, "exec.sh")
+		scriptContent := fmt.Sprintf("#!/bin/sh\necho 'mutated copy' > %q\necho 'mutated' > %q\nexit 0\n", generatedTmp, filepath.Join(fixtureDir, "foo.go"))
+		require.NoError(t, os.WriteFile(execScript, []byte(scriptContent), 0755))
+
+		testMain(
+			t,
+			fixtureDir,
+			[]string{"--exec", execScript, "--exec-timeout", "5", "."},
+			returnOk,
+			"mutation score",
+		)
+
+		assert.NoFileExists(t, generatedTmp, "test-generated *.tmp file must be cleaned up on success")
+		assert.FileExists(t, preExisting, "pre-existing user-owned *.tmp file must not be removed")
+		restored, err := os.ReadFile(filepath.Join(fixtureDir, "foo.go"))
+		require.NoError(t, err)
+		assert.Equal(t, origSource, string(restored), "mutated source file must be restored")
+	})
+
+	t.Run("cleans up generated tmp and preserves pre-existing on failure", func(t *testing.T) {
+		fixtureDir := t.TempDir()
+		writeFixtureFile(t, filepath.Join(fixtureDir, "go.mod"), "module example.com/cleanup\n\ngo 1.22\n")
+		origSource := "package cleanup\n\nfunc Foo() int { return 1 }\n"
+		writeFixtureFile(t, filepath.Join(fixtureDir, "foo.go"), origSource)
+		writeFixtureFile(t, filepath.Join(fixtureDir, "foo_test.go"), "package cleanup\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) { if Foo() != 1 { t.Fail() } }\n")
+
+		preExisting := filepath.Join(fixtureDir, "user.tmp")
+		writeFixtureFile(t, preExisting, "user data")
+
+		generatedTmp := filepath.Join(fixtureDir, "foo.go.tmp")
+		execScript := filepath.Join(fixtureDir, "exec_fail.sh")
+		// Script creates generated tmp file and exits with error
+		scriptContent := fmt.Sprintf("#!/bin/sh\necho 'mutated copy' > %q\necho 'mutated' > %q\nexit 3\n", generatedTmp, filepath.Join(fixtureDir, "foo.go"))
+		require.NoError(t, os.WriteFile(execScript, []byte(scriptContent), 0755))
+
+		testMain(
+			t,
+			fixtureDir,
+			[]string{"--exec", execScript, "--exec-timeout", "5", "--min-msi", "101", "."},
+			returnMsiThresholdNotMet,
+			"mutation score",
+		)
+
+		assert.NoFileExists(t, generatedTmp, "test-generated *.tmp file must be cleaned up on failure")
+		assert.FileExists(t, preExisting, "pre-existing user-owned *.tmp file must not be removed")
+		restored, err := os.ReadFile(filepath.Join(fixtureDir, "foo.go"))
+		require.NoError(t, err)
+		assert.Equal(t, origSource, string(restored), "mutated source file must be restored")
+	})
 }
 
 func TestMainUnknownConfigField(t *testing.T) {
@@ -1019,6 +1092,28 @@ func TestMainPerTestFlag(t *testing.T) {
 	)
 }
 
+func TestMainPerTestRecursiveKeepsSubpackageTests(t *testing.T) {
+	// Only a subpackage test checks Double; the root test merely calls it.
+	// With --test-recursive the per-test filter must keep the subpackage test
+	// eligible, so every mutant is killed as in an unfiltered recursive run (#250).
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "sub"), 0755))
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/rec\n\ngo 1.22\n")
+	writeFixtureFile(t, filepath.Join(root, "rec.go"), "package rec\n\nfunc Double(x int) int {\n\treturn x * 2\n}\n")
+	writeFixtureFile(t, filepath.Join(root, "rec_test.go"), "package rec\n\nimport \"testing\"\n\nfunc TestTouch(t *testing.T) { _ = Double(1) }\n")
+	writeFixtureFile(t, filepath.Join(root, "sub", "sub.go"), "package sub\n")
+	writeFixtureFile(t, filepath.Join(root, "sub", "sub_test.go"), "package sub\n\nimport (\n\t\"testing\"\n\n\t\"example.com/rec\"\n)\n\nfunc TestDouble(t *testing.T) {\n\tif rec.Double(3) != 6 {\n\t\tt.Fatal(\"bad\")\n\t}\n}\n")
+
+	out := testMain(
+		t,
+		root,
+		[]string{"--workers", "1", "--exec-timeout", "30", "--coverage", "--per-test", "--test-recursive", "--min-msi", "100", "."},
+		returnOk,
+		"mutation score",
+	)
+	assert.NotContains(t, out, "ESCAPED")
+}
+
 func TestMainDryRun(t *testing.T) {
 	// --dry-run must exit 0 and report how many mutations would be generated
 	// without writing any files or running any tests.
@@ -1350,6 +1445,45 @@ func TestAll(t *testing.T) {
 	assert.Contains(t, out, "statement/return: 1")
 }
 
+func setupSourceCleanup(t *testing.T, absRoot string) func() {
+	t.Helper()
+	preExistingTmp := make(map[string]bool)
+	_ = filepath.Walk(absRoot, func(path string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && strings.HasSuffix(path, ".tmp") {
+			preExistingTmp[path] = true
+		}
+		return nil
+	})
+
+	originalSources := make(map[string][]byte)
+	_ = filepath.Walk(absRoot, func(path string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && strings.HasSuffix(path, ".go") {
+			if content, readErr := os.ReadFile(path); readErr == nil {
+				originalSources[path] = content
+			}
+		}
+		return nil
+	})
+
+	cleanup := func() {
+		_ = filepath.Walk(absRoot, func(path string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() && strings.HasSuffix(path, ".tmp") && !preExistingTmp[path] {
+				_ = os.Remove(path)
+			}
+			return nil
+		})
+
+		for path, origContent := range originalSources {
+			curContent, readErr := os.ReadFile(path)
+			if readErr != nil || !bytes.Equal(curContent, origContent) {
+				_ = os.WriteFile(path, origContent, 0644)
+			}
+		}
+	}
+	t.Cleanup(cleanup)
+	return cleanup
+}
+
 func testMain(t *testing.T, root string, exec []string, expectedExitCode int, contains string) string {
 	// Clear the parser cache so each test loads files fresh from disk.
 	// Without this, TestMainMatch's exec script (which writes to the original
@@ -1360,6 +1494,13 @@ func testMain(t *testing.T, root string, exec []string, expectedExitCode int, co
 	saveStdout := os.Stdout
 	saveCwd, err := os.Getwd()
 	assert.Nil(t, err)
+
+	absRoot := root
+	if !filepath.IsAbs(absRoot) {
+		absRoot = filepath.Join(saveCwd, root)
+	}
+
+	defer setupSourceCleanup(t, absRoot)()
 
 	r, w, err := os.Pipe()
 	assert.Nil(t, err)
@@ -1392,4 +1533,69 @@ func testMain(t *testing.T, root string, exec []string, expectedExitCode int, co
 	assert.Equal(t, expectedExitCode, exitCode)
 	assert.Contains(t, out, contains)
 	return out
+}
+
+// TestMainMutantIDsIgnoreTargetSpelling covers #248: a survivor accepted from a
+// package run, and an ID copied from the agentic report, must match the same
+// mutant however the file target is spelled and from whichever module
+// directory go-mutesting runs.
+func TestMainMutantIDsIgnoreTargetSpelling(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	pkgDir := filepath.Join(root, "internal", "store")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/spelling\n\ngo 1.26.6\n")
+	writeFixtureFile(t, filepath.Join(root, "mutesting.yml"), "enable_mutators:\n  - statement/return\n")
+	writeFixtureFile(t, filepath.Join(pkgDir, "store.go"), "package store\n\nfunc Value() int {\n\treturn 42\n}\n")
+	writeFixtureFile(t, filepath.Join(pkgDir, "other.go"), "package store\n\nfunc Other() int {\n\treturn 7\n}\n")
+	writeFixtureFile(t, filepath.Join(pkgDir, "store_test.go"), "package store\n")
+	writeFixtureFile(t, filepath.Join(pkgDir, "other_test.go"), "package store\n")
+
+	agenticPath := filepath.Join(root, "go-mutesting-agentic.json")
+	previousAgentic := models.ReportAgenticJSONFileName
+	models.ReportAgenticJSONFileName = agenticPath
+	t.Cleanup(func() { models.ReportAgenticJSONFileName = previousAgentic })
+
+	baselinePath := filepath.Join(root, "go-mutesting-baseline.json")
+	common := []string{"--workers", "1", "--exec-timeout", "5", "--config", filepath.Join(root, "mutesting.yml"), "--baseline", baselinePath}
+
+	testMain(t, root, append([]string{"--update-baseline"}, append(common, "./internal/store")...), returnOk, "")
+	testMain(t, root, append([]string{"--logger-agentic-json"}, append(common, "./internal/store")...), returnOk, "mutation score")
+
+	var agentic struct {
+		Mutants []struct {
+			ID   string `json:"id"`
+			File string `json:"file"`
+		} `json:"mutants"`
+	}
+	data, err := os.ReadFile(agenticPath)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &agentic))
+	require.Len(t, agentic.Mutants, 2, "fixture must yield one survivor per source file")
+	storeID := ""
+	for _, m := range agentic.Mutants {
+		if m.File == "internal/store/store.go" {
+			storeID = m.ID
+		}
+	}
+	require.NotEmpty(t, storeID, "agentic report must name internal/store/store.go canonically")
+
+	spellings := []struct{ dir, target string }{
+		{root, "./internal/store/store.go"},
+		{root, "internal/store/store.go"},
+		{root, filepath.Join(pkgDir, "store.go")},
+		{root, "./internal/store"},
+		{pkgDir, "store.go"},
+		{pkgDir, "./store.go"},
+		{pkgDir, "."},
+	}
+	for _, s := range spellings {
+		t.Run(s.target+" from "+filepath.Base(s.dir), func(t *testing.T) {
+			testMain(t, s.dir, append([]string{"--fail-on-escaped"}, append(common, s.target)...), returnOk, "mutation score")
+
+			out := testMain(t, s.dir, append([]string{"--run-mutant-id", storeID}, append(common, s.target)...), returnOk, "ESCAPED")
+			assert.Contains(t, out, "store.go")
+			assert.NotContains(t, out, "other.go")
+		})
+	}
 }

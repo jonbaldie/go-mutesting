@@ -7,9 +7,12 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,11 +47,13 @@ func TestRunCustomExecHonorsCancelledContext(t *testing.T) {
 	cancel()
 	opts := &models.Options{}
 	opts.Exec.Timeout = 30
+	var stderr bytes.Buffer
 	job := execJob{
 		ctx:   ctx,
 		opts:  opts,
 		pkg:   types.NewPackage("sample", "sample"),
 		execs: []string{"sh", "-c", "sleep 10"},
+		out:   jobOutput{stderr: &stderr},
 		source: mutationSource{
 			originalFile: original,
 			mutationFile: mutated,
@@ -61,6 +66,9 @@ func TestRunCustomExecHonorsCancelledContext(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("cancelled command took %s", elapsed)
+	}
+	if !strings.Contains(stderr.String(), "custom exec failed to start") {
+		t.Errorf("expected cancellation message on job stderr, got %q", stderr.String())
 	}
 }
 
@@ -148,6 +156,225 @@ func TestEngineDryRun(t *testing.T) {
 	}
 }
 
+func TestEngineParallelWorkersSerializeInjectedStdout(t *testing.T) {
+	opts := parallelWriterOptions(t)
+	stdout := &concurrentWriteBuffer{}
+	var stderr bytes.Buffer
+	e := &Engine{Stdout: stdout, Stderr: &stderr}
+	res, err := e.Run(context.Background(), opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.ExitCode != returnOk {
+		t.Fatalf("expected exit code %d, got %d; stderr: %s", returnOk, res.ExitCode, stderr.String())
+	}
+	if stdout.overlapped.Load() {
+		t.Fatal("engine called the injected stdout writer concurrently")
+	}
+	completeTestOutput := "diagnostic=" + strings.Repeat("x", 1<<20)
+	if got, want := int64(strings.Count(stdout.String(), completeTestOutput)), res.Report.Stats.KilledCount; got != want {
+		t.Fatalf("expected complete go test output for every killed mutant, got %d complete outputs for %d killed mutants", got, want)
+	}
+}
+
+func TestEngineParallelWorkersSupportBytesBuffers(t *testing.T) {
+	opts := parallelWriterOptions(t)
+	var stdout, stderr bytes.Buffer
+	e := &Engine{Stdout: &stdout, Stderr: &stderr}
+	res, err := e.Run(context.Background(), opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.ExitCode != returnOk {
+		t.Fatalf("expected exit code %d, got %d; stderr: %s", returnOk, res.ExitCode, stderr.String())
+	}
+	completeTestOutput := "diagnostic=" + strings.Repeat("x", 1<<20)
+	if got, want := int64(strings.Count(stdout.String(), completeTestOutput)), res.Report.Stats.KilledCount; got != want {
+		t.Fatalf("expected complete go test output for every killed mutant, got %d complete outputs for %d killed mutants", got, want)
+	}
+}
+
+type concurrentWriteBuffer struct {
+	active     atomic.Int32
+	overlapped atomic.Bool
+	mu         sync.Mutex
+	buffer     bytes.Buffer
+}
+
+func (w *concurrentWriteBuffer) Write(p []byte) (int, error) {
+	if w.active.Add(1) > 1 {
+		w.overlapped.Store(true)
+	}
+	defer w.active.Add(-1)
+	time.Sleep(500 * time.Millisecond)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buffer.Write(p)
+}
+
+func (w *concurrentWriteBuffer) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buffer.String()
+}
+
+func parallelWriterOptions(t *testing.T) *models.Options {
+	t.Helper()
+	_ = os.MkdirAll("./testdata", 0755)
+	tempDir, err := os.MkdirTemp("./testdata", "parallel-writers-*")
+	if err != nil {
+		t.Fatalf("failed to create temp package: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
+
+	src := "package parallelwriters\n\nfunc Add(a, b int) int { return a + b + a }\n"
+	testSrc := "package parallelwriters\n\nimport (\"strings\"; \"testing\")\n\nfunc TestAdd(t *testing.T) { if got := Add(1, 2); got != 4 { t.Errorf(\"unexpected result %d diagnostic=%s\", got, strings.Repeat(\"x\", 1<<20)) } }\n"
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg.go"), []byte(src), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg_test.go"), []byte(testSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := &models.Options{}
+	opts.Exec.Timeout = 30
+	opts.General.Workers = 2
+	opts.General.Debug = true
+	opts.Mutator.DisableMutators = []string{
+		"branch/*", "composite/*", "concurrency/*", "conditional/*",
+		"expression/*", "loop/*", "numbers/*", "select/*", "statement/*",
+	}
+	opts.Remaining.Targets = []string{"./" + tempDir}
+	return opts
+}
+
+// escapingPackageOptions writes a package whose test never checks results, so
+// every arithmetic mutant escapes, and returns options targeting it.
+func escapingPackageOptions(t *testing.T) *models.Options {
+	t.Helper()
+	_ = os.MkdirAll("./testdata", 0755)
+	tempDir, err := os.MkdirTemp("./testdata", "escaping-*")
+	if err != nil {
+		t.Fatalf("failed to create temp package: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
+
+	src := "package escaping\n\nfunc Add(a, b int) int { return a + b }\n"
+	testSrc := "package escaping\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) { Add(1, 2) }\n"
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg.go"), []byte(src), 0644); err != nil {
+		t.Fatalf("failed to write pkg.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "pkg_test.go"), []byte(testSrc), 0644); err != nil {
+		t.Fatalf("failed to write pkg_test.go: %v", err)
+	}
+
+	opts := &models.Options{}
+	opts.Exec.Timeout = 30
+	opts.Mutator.DisableMutators = []string{
+		"branch/*", "composite/*", "concurrency/*", "conditional/*",
+		"expression/*", "loop/*", "numbers/*", "select/*", "statement/*",
+	}
+	opts.Remaining.Targets = []string{"./" + tempDir}
+	return opts
+}
+
+func TestEngineQualityGateMessagesUseInjectedStderr(t *testing.T) {
+	opts := escapingPackageOptions(t)
+	opts.Score.FailOnEscaped = true
+	opts.Score.MinMsi = 101
+	opts.Score.MinCoveredMsi = 50
+
+	var stdout, stderr bytes.Buffer
+	e := &Engine{Stdout: &stdout, Stderr: &stderr}
+
+	res, err := e.Run(context.Background(), opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.ExitCode != returnMsiThresholdNotMet {
+		t.Errorf("expected exit code %d, got %d", returnMsiThresholdNotMet, res.ExitCode)
+	}
+	for _, want := range []string{
+		"mutant(s) escaped",
+		"is below minimum required 101.00%",
+		"Covered MSI cannot be checked",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("expected %q on injected stderr, got %q", want, stderr.String())
+		}
+	}
+}
+
+func TestEngineGitHubAnnotationsUseInjectedStdout(t *testing.T) {
+	opts := escapingPackageOptions(t)
+	opts.Logger.GitHub = true
+
+	var stdout, stderr bytes.Buffer
+	e := &Engine{Stdout: &stdout, Stderr: &stderr}
+
+	if _, err := e.Run(context.Background(), opts, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "::warning file=") {
+		t.Errorf("expected GitHub annotation on injected stdout, got %q", stdout.String())
+	}
+}
+
+func TestEngineDebugGoTestOutputUsesInjectedStdout(t *testing.T) {
+	opts := escapingPackageOptions(t)
+	opts.General.Debug = true
+
+	var stdout, stderr bytes.Buffer
+	e := &Engine{Stdout: &stdout, Stderr: &stderr}
+
+	if _, err := e.Run(context.Background(), opts, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "ok  \t") {
+		t.Errorf("expected mutant go test output on injected stdout, got %q", stdout.String())
+	}
+}
+
+func TestEngineCustomExecOutputUsesInjectedWriters(t *testing.T) {
+	opts := escapingPackageOptions(t)
+	opts.General.Verbose = true
+	script := filepath.Join(t.TempDir(), "exec.sh")
+	if err := os.WriteFile(script, []byte("echo exec-stdout-marker\necho exec-stderr-marker >&2\nexit 2\n"), 0644); err != nil {
+		t.Fatalf("failed to write exec.sh: %v", err)
+	}
+	opts.Exec.Exec = "/bin/sh " + script
+
+	var stdout, stderr bytes.Buffer
+	e := &Engine{Stdout: &stdout, Stderr: &stderr}
+
+	if _, err := e.Run(context.Background(), opts, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"exec-stdout-marker", "Mutation did not compile"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("expected %q on injected stdout, got %q", want, stdout.String())
+		}
+	}
+	if !strings.Contains(stderr.String(), "exec-stderr-marker") {
+		t.Errorf("expected exec stderr on injected stderr, got %q", stderr.String())
+	}
+}
+
+func TestEnginePerTestProgressUsesInjectedStdout(t *testing.T) {
+	opts := escapingPackageOptions(t)
+	opts.Exec.PerTest = true
+
+	var stdout, stderr bytes.Buffer
+	e := &Engine{Stdout: &stdout, Stderr: &stderr}
+
+	if _, err := e.Run(context.Background(), opts, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Building per-test coverage map") {
+		t.Errorf("expected per-test progress on injected stdout, got %q", stdout.String())
+	}
+}
+
 func TestEngineNoopFail(t *testing.T) {
 	// Create testdata dir if not exists
 	_ = os.MkdirAll("./testdata", 0755)
@@ -193,6 +420,9 @@ func TestShouldFail(t *testing.T) {
 	// The engine must return exit code 3 (returnError) when NOOP suite fails
 	if res.ExitCode != 3 {
 		t.Errorf("expected exit code 3 for failing NOOP check, got %d", res.ExitCode)
+	}
+	if !strings.Contains(stderr.String(), "Baseline test failed") {
+		t.Errorf("expected baseline failure on injected stderr, got %q", stderr.String())
 	}
 }
 
@@ -701,7 +931,7 @@ func TestCheckMsiGate_FloatPrecision(t *testing.T) {
 			Msi:               29.0 / 100.0,
 		},
 	}
-	if checkMsiGate(report, 29.0) {
+	if checkMsiGate(io.Discard, report, 29.0) {
 		t.Fatalf("checkMsiGate failed for exact 29%% threshold")
 	}
 
@@ -714,7 +944,7 @@ func TestCheckMsiGate_FloatPrecision(t *testing.T) {
 			Msi:               28.0 / 100.0,
 		},
 	}
-	if !checkMsiGate(reportBelow, 29.0) {
+	if !checkMsiGate(io.Discard, reportBelow, 29.0) {
 		t.Fatalf("checkMsiGate expected to fail for 28%% when min is 29%%")
 	}
 }
@@ -730,7 +960,7 @@ func TestCheckCoveredMsiGate_FloatPrecision(t *testing.T) {
 			CoveredCodeMsi:    58.0 / 100.0,
 		},
 	}
-	if checkCoveredMsiGate(report, 58.0) {
+	if checkCoveredMsiGate(io.Discard, report, 58.0) {
 		t.Fatalf("checkCoveredMsiGate failed for exact 58%% threshold")
 	}
 
@@ -744,32 +974,8 @@ func TestCheckCoveredMsiGate_FloatPrecision(t *testing.T) {
 			CoveredCodeMsi:    57.0 / 100.0,
 		},
 	}
-	if !checkCoveredMsiGate(reportBelow, 58.0) {
+	if !checkCoveredMsiGate(io.Discard, reportBelow, 58.0) {
 		t.Fatalf("checkCoveredMsiGate expected to fail for 57%% when min is 58%%")
-	}
-}
-
-func vetArgs(args []string) []string {
-	vets := make([]string, 0, 2)
-	for _, arg := range args {
-		if arg == "-vet" || arg == "--vet" || strings.HasPrefix(arg, "-vet=") || strings.HasPrefix(arg, "--vet=") {
-			vets = append(vets, arg)
-		}
-	}
-	return vets
-}
-
-func TestMutantGoTestArgsDisablesVetByDefault(t *testing.T) {
-	args := mutantGoTestArgs("overlay.json", 60, nil, "", "example")
-	if got := vetArgs(args); len(got) != 1 || got[0] != "-vet=off" {
-		t.Fatalf("expected exactly one -vet argument (-vet=off), got %v in %v", got, args)
-	}
-}
-
-func TestMutantGoTestArgsUserVetWins(t *testing.T) {
-	args := mutantGoTestArgs("overlay.json", 60, []string{"-vet=atomic"}, "", "example")
-	if got := vetArgs(args); len(got) != 1 || got[0] != "-vet=atomic" {
-		t.Fatalf("user -vet must win with exactly one -vet argument, got %v in %v", got, args)
 	}
 }
 

@@ -6,12 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.18] — 2026-09-29
+
+Replicates quality-gates/mutago v2.10.17 and v2.10.18.
+
 ### Added
 - Link the CLI reference to the related mutago exploratory-testing report, clearly scoped as a sibling-project reference.
 
 ### Fixed
+- With `--test-recursive`, `--per-test` now maps the tests of every subpackage too, built with `-coverpkg` for the target. Before, its `-run` filter left out subpackage tests, so a mutant that only a subpackage test catches escaped.
+- A bare `// mutator-disable-next-line` and a pattern-only `// mutator-disable-regexp <pattern>` now disable every mutator on the target lines. Before, an omitted mutator list suppressed nothing and said so silently.
+- Clean up test-generated temporary source files (`*.tmp`) and restore in-place mutated sources after integration test runs, preventing leftover untracked files such as `example/sub/sub.go.tmp`.
+- Mutant IDs no longer depend on how a file target is spelled. `./a/b.go`, `a/b.go`, an absolute path, a package target, and `b.go` run from inside `a/` now give the same ID, so baseline matching, `--run-mutant-id`, the agentic and GitLab reports, and GitHub annotations all agree. IDs from canonical module-relative paths do not change. A baseline entry that was accepted from a `./`-prefixed or subdirectory-relative target can now show up as a new escape: examine each such entry before you update the baseline, rather than re-accepting every current escape.
+- With `--test-recursive`, the baseline pre-flight and `--coverage` runs now target `<package>/...` like the mutant runs, and coverage uses `-coverpkg` so subpackage tests count. Before, they checked fewer tests than the mutants ran. A failing subpackage test now stops the run with exit 3.
 - Run `example/sub` tests before CLI mutation integration tests in the pre-commit hook, then restore the shared example fixtures.
 - Skip diff-scoped mutation profiling when a pushed diff contains no Go source files.
+
+### Changed
+- The baseline pre-flight and `--coverage` runs now pass `-vet=off` by default, like mutant runs. A `-vet` in `--test-flags` wins in all three.
+- Engine writes to injected stdout and stderr writers are serialized, making ordinary non-thread-safe writers safe with multiple workers.
+- Mutant `go test` runs now pass `-failfast`, so a killed mutant stops at its first failing test. Override with `--test-flags=-failfast=false`.
+- Bumped the `messgo` CI quality gate and pre-commit hook from `v0.1.9` to `v0.5.0`, and refactored the functions it newly flagged. No behaviour change.
+- The engine now sends all console output through its injected stdout and stderr writers. CLI output is unchanged.
 
 ## [v2.10.16] — 2026-09-24
 
@@ -654,4 +670,5 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.5]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.4...v2.10.5
 [v2.10.15]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.6...v2.10.15
 [v2.10.16]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.15...v2.10.16
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.16...HEAD
+[v2.10.18]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.16...v2.10.18
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...HEAD

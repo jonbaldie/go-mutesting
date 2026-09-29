@@ -51,8 +51,26 @@ const (
 
 // Engine orchestrates the mutation testing lifecycle.
 type Engine struct {
+	// Stdout is the writer for engine output. Writes during Run are serialized.
 	Stdout io.Writer
+	// Stderr is the writer for engine diagnostics. Writes during Run are serialized.
 	Stderr io.Writer
+}
+
+type synchronizedWriter struct {
+	mu     *sync.Mutex
+	writer io.Writer
+}
+
+func (w *synchronizedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.writer.Write(p)
+}
+
+func synchronizedWriters(stdout, stderr io.Writer) (io.Writer, io.Writer) {
+	mu := &sync.Mutex{}
+	return &synchronizedWriter{mu: mu, writer: stdout}, &synchronizedWriter{mu: mu, writer: stderr}
 }
 
 // Result holds the final status of a mutation run.
@@ -70,6 +88,7 @@ type execConfig struct {
 	numWorkers     int
 	execs          []string
 	extraTestFlags []string
+	importPaths    *importPaths
 }
 
 type mutationRun struct {
@@ -85,8 +104,15 @@ type mutationRun struct {
 	moduleRoot       string
 	jobs             chan<- execJob
 	stdout           io.Writer
+	stderr           io.Writer
 	runMutantIDFound *atomic.Bool
 	gitChangedLines  gitdiff.ChangedLines
+}
+
+// jobOutput is where a worker writes console output for one mutation.
+type jobOutput struct {
+	stdout io.Writer
+	stderr io.Writer
 }
 
 type execJob struct {
@@ -98,8 +124,8 @@ type execJob struct {
 	execs          []string
 	perTestProf    *coverage.PerTestProfile
 	extraTestFlags []string
-	runMutantID    string
 	tmpDir         string
+	out            jobOutput
 	source         mutationSource
 	// packageLevelDecl is true when the mutation sits inside a package-level
 	// const/var/type/import declaration. Such declarations are not executable
@@ -152,20 +178,23 @@ func (e *Engine) Run(ctx context.Context, opts *models.Options, bl *baseline.Fil
 // RunResolved executes a mutation run using targets discovered by the caller.
 func (e *Engine) RunResolved(ctx context.Context, opts *models.Options, bl *baseline.File, targets importing.ResolvedTargets) (Result, error) {
 	e.initDefaults()
-	run, pkgs, jobs, jobWg, stopProgress, progressWg, _, err := e.validateAndInitRun(ctx, opts, targets)
+	stdout, stderr := synchronizedWriters(e.Stdout, e.Stderr)
+	runEngine := &Engine{Stdout: stdout, Stderr: stderr}
+	setup, err := runEngine.validateAndInitRun(ctx, opts, targets)
 	if err != nil {
 		return Result{ExitCode: returnError}, err
 	}
+	run, pkgs := setup.run, setup.pkgs
 	if run == nil {
 		// initRun returns a nil run with a non-nil result for early exits.
 		return Result{ExitCode: returnError}, nil
 	}
 
-	cleanup := newRunCleanup(opts, jobs, jobWg, stopProgress, progressWg, run.tmpDir)
+	cleanup := newRunCleanup(setup)
 	defer cleanup()
 
 	report := run.report
-	if exitCode := runBaselineChecks(opts, pkgs, run.exec.execs, run.exec.extraTestFlags); exitCode != 0 {
+	if exitCode := runBaselineChecks(runEngine.Stderr, opts, pkgs, run.exec.importPaths, run.exec.execs, run.exec.extraTestFlags); exitCode != 0 {
 		return Result{Report: report, ExitCode: exitCode}, nil
 	}
 
@@ -192,11 +221,12 @@ func (e *Engine) RunResolved(ctx context.Context, opts *models.Options, bl *base
 	}
 
 	report.Calculate()
-	exitCode := finalizeResults(e.Stdout, e.Stderr, opts, report, bl, run.moduleRoot, run.runMutantIDFound.Load())
+	exitCode := finalizeResults(runEngine.Stdout, runEngine.Stderr, opts, report, bl, run.moduleRoot, run.runMutantIDFound.Load())
 	return Result{Report: report, ExitCode: exitCode}, nil
 }
 
-func newRunCleanup(opts *models.Options, jobs chan execJob, jobWg *sync.WaitGroup, stopProgress chan struct{}, progressWg *sync.WaitGroup, tmpDir string) func() {
+func newRunCleanup(setup *runSetup) func() {
+	opts := setup.run.opts
 	if opts.General.DryRun {
 		return func() {}
 	}
@@ -204,7 +234,7 @@ func newRunCleanup(opts *models.Options, jobs chan execJob, jobWg *sync.WaitGrou
 	return func() {
 		if !cleanedUp {
 			cleanedUp = true
-			shutdownAndCleanup(opts, jobs, jobWg, stopProgress, progressWg, tmpDir)
+			shutdownAndCleanup(setup.run.stderr, opts, setup.jobs, setup.jobWg, setup.stopProgress, setup.progressWg, setup.run.tmpDir)
 		}
 	}
 }
@@ -218,34 +248,45 @@ func (e *Engine) initDefaults() {
 	}
 }
 
-func (e *Engine) validateAndInitRun(ctx context.Context, opts *models.Options, targets importing.ResolvedTargets) (*mutationRun, []importing.Package, chan execJob, *sync.WaitGroup, chan struct{}, *sync.WaitGroup, gitdiff.ChangedLines, error) {
+// runSetup is the initialised run plus the worker and progress handles that
+// cleanup must shut down.
+type runSetup struct {
+	run          *mutationRun
+	pkgs         []importing.Package
+	jobs         chan execJob
+	jobWg        *sync.WaitGroup
+	stopProgress chan struct{}
+	progressWg   *sync.WaitGroup
+}
+
+func (e *Engine) validateAndInitRun(ctx context.Context, opts *models.Options, targets importing.ResolvedTargets) (*runSetup, error) {
 	if err := validateAdaptiveTimeoutTestCount(opts); err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, err
+		return nil, err
 	}
 	return e.initRun(ctx, opts, targets)
 }
 
-func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets importing.ResolvedTargets) (*mutationRun, []importing.Package, chan execJob, *sync.WaitGroup, chan struct{}, *sync.WaitGroup, gitdiff.ChangedLines, error) {
+func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets importing.ResolvedTargets) (*runSetup, error) {
 	files := targets.Files
 	if len(files) == 0 {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("Could not find any suitable Go source files")
+		return nil, fmt.Errorf("Could not find any suitable Go source files")
 	}
 
 	mutationBlackList, err := loadBlacklist(opts.Files.Blacklist)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, err
+		return nil, err
 	}
 
 	gitChangedLines, err := loadGitDiffLines(opts)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("Cannot load git diff: %w", err)
+		return nil, fmt.Errorf("Cannot load git diff: %w", err)
 	}
 
 	pkgs := targets.Packages
 	astutil.ClearIdentifierCache()
 	parser.ClearPackageCache()
 	if err := parser.PreparePackages(files); err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("Cannot load target packages: %w", err)
+		return nil, fmt.Errorf("Cannot load target packages: %w", err)
 	}
 
 	report := &models.Report{}
@@ -258,14 +299,14 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 
 	tmpDir, err := createTmpDir(opts)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, err
+		return nil, err
 	}
 
 	var jobs chan execJob
 	var jobWg *sync.WaitGroup
 	runMutantIDFound := &atomic.Bool{}
 	if !opts.General.DryRun && !opts.Exec.NoExec {
-		jobs, jobWg = startWorkerPool(opts, numWorkers, report, &reportMu, e.Stdout, gitChangedLines)
+		jobs, jobWg = startWorkerPool(opts, numWorkers, report, &reportMu, gitChangedLines)
 	}
 
 	var stopProgress chan struct{}
@@ -284,6 +325,7 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 			numWorkers:     numWorkers,
 			execs:          execs,
 			extraTestFlags: extraTestFlags,
+			importPaths:    newImportPaths(),
 		},
 		report:           report,
 		mu:               &reportMu,
@@ -291,11 +333,19 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 		moduleRoot:       detectModuleRoot(),
 		jobs:             jobs,
 		stdout:           e.Stdout,
+		stderr:           e.Stderr,
 		runMutantIDFound: runMutantIDFound,
 		gitChangedLines:  gitChangedLines,
 	}
 
-	return run, pkgs, jobs, jobWg, stopProgress, progressWg, gitChangedLines, nil
+	return &runSetup{
+		run:          run,
+		pkgs:         pkgs,
+		jobs:         jobs,
+		jobWg:        jobWg,
+		stopProgress: stopProgress,
+		progressWg:   progressWg,
+	}, nil
 }
 
 func createTmpDir(opts *models.Options) (string, error) {
@@ -313,30 +363,27 @@ func createTmpDir(opts *models.Options) (string, error) {
 func buildActiveMutators(opts *models.Options) []mutatorItem {
 	effectiveDisable := append(opts.Mutator.DisableMutators, opts.Config.DisableMutators...)
 	var mutators []mutatorItem
-MUTATOR:
 	for _, name := range mutator.List() {
-		if len(opts.Config.EnableMutators) > 0 {
-			allowed := false
-			for _, e := range opts.Config.EnableMutators {
-				if matchesMutator(e, name) {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				continue MUTATOR
-			}
+		if len(opts.Config.EnableMutators) > 0 && !matchesAnyMutator(opts.Config.EnableMutators, name) {
+			continue
 		}
-		for _, d := range effectiveDisable {
-			if matchesMutator(d, name) {
-				continue MUTATOR
-			}
+		if matchesAnyMutator(effectiveDisable, name) {
+			continue
 		}
 		console.Verbose(opts, "Enable mutator %q", name)
 		m, _ := mutator.New(name)
 		mutators = append(mutators, mutatorItem{Name: name, Mutator: m})
 	}
 	return mutators
+}
+
+func matchesAnyMutator(patterns []string, name string) bool {
+	for _, pattern := range patterns {
+		if matchesMutator(pattern, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func matchesMutator(pattern, name string) bool {
@@ -432,7 +479,7 @@ func mutateAll(r *mutationRun, pkgs []importing.Package, coverageProfiles []*cov
 
 func configureAdaptiveTimeoutAndCoverage(opts *models.Options, pkgs []importing.Package, run *mutationRun) ([]*coverage.Profile, error) {
 	if opts.Exec.Coverage && !opts.Exec.NoExec && !opts.General.DryRun {
-		profiles, maxBaseline, err := prepareCoverageProfiles(opts, pkgs, run.tmpDir, run.modulePath, run.exec.extraTestFlags, run.report)
+		profiles, maxBaseline, err := prepareCoverageProfiles(opts, pkgs, run.exec.importPaths, run.tmpDir, run.modulePath, run.exec.extraTestFlags, run.report)
 		if err != nil {
 			return nil, err
 		}
@@ -444,11 +491,11 @@ func configureAdaptiveTimeoutAndCoverage(opts *models.Options, pkgs []importing.
 	return nil, nil
 }
 
-func prepareCoverageProfiles(opts *models.Options, pkgs []importing.Package, tmpDir string, modulePath string, extraTestFlags []string, report *models.Report) ([]*coverage.Profile, time.Duration, error) {
+func prepareCoverageProfiles(opts *models.Options, pkgs []importing.Package, paths *importPaths, tmpDir string, modulePath string, extraTestFlags []string, report *models.Report) ([]*coverage.Profile, time.Duration, error) {
 	profiles := make([]*coverage.Profile, len(pkgs))
 	var maxBaseline time.Duration
 	for i, importPkg := range pkgs {
-		profile, elapsed, err := buildCoverageProfile(opts, importPkg.Files, tmpDir, modulePath, extraTestFlags)
+		profile, elapsed, err := buildCoverageProfile(opts, paths.forFiles(importPkg.Files), tmpDir, modulePath, extraTestFlags)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -467,7 +514,7 @@ func perTestForPackage(r *mutationRun, importPkg importing.Package) *coverage.Pe
 	if !r.opts.Exec.PerTest || r.opts.Exec.NoExec || r.opts.General.DryRun || len(r.exec.execs) != 0 {
 		return nil
 	}
-	return buildPerTestCoverageProfile(r.opts, importPkg.Files, r.modulePath, r.tmpDir, r.exec.numWorkers, r.exec.extraTestFlags)
+	return buildPerTestCoverageProfile(r.stdout, r.opts, r.exec.importPaths.forFiles(importPkg.Files), r.modulePath, r.tmpDir, r.exec.numWorkers, r.exec.extraTestFlags)
 }
 
 func processFile(r *mutationRun, file string, coverProfile *coverage.Profile, perTestProf *coverage.PerTestProfile, dryRunMutatorTotals map[string]int) (int, int) {
@@ -480,10 +527,11 @@ func processFile(r *mutationRun, file string, coverProfile *coverage.Profile, pe
 	collectors := []filter.NodeCollector{annotationProcessor, skipFilterProcessor, sourceLineFilter}
 	nodeFilters := []filter.NodeFilter{annotationProcessor, skipFilterProcessor, sourceLineFilter}
 
-	src, fset, pkg, info, err := parser.ParseAndTypeCheckFile(file, collectors)
+	checked, err := parser.ParseAndTypeCheckFile(file, collectors)
 	if err != nil {
 		return 0, returnError
 	}
+	src, fset, pkg, info := checked.File, checked.Fset, checked.Pkg, checked.Info
 	originalSource, err := os.ReadFile(file)
 	if err != nil {
 		return 0, returnError
@@ -595,7 +643,7 @@ func applyMutator(r *mutationRun, m mutatorItem, fc *fileContext, node ast.Node,
 
 func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, originalStartLine int64, originalSourceCode []byte, dryRunCounts, dryRunGlobalTotals map[string]int) {
 	if r.opts.General.DryRun {
-		relFile := toRelPath(fc.absFile, r.moduleRoot)
+		relFile := baseline.RelPath(fc.absFile, r.moduleRoot)
 		if isGitDiffSkipped(r.gitChangedLines, relFile, fc.absFile, int(originalStartLine)) {
 			return
 		}
@@ -623,7 +671,7 @@ func processMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mu
 		r.mu.Unlock()
 		return
 	}
-	checksum := stableMutationEditKey(toRelPath(fc.absFile, r.moduleRoot), originalSourceCode, edit)
+	checksum := stableMutationEditKey(baseline.RelPath(fc.absFile, r.moduleRoot), originalSourceCode, edit)
 	mutant.Checksum = checksum
 	if _, duplicate := r.blacklist[checksum]; duplicate {
 		r.mu.Lock()
@@ -650,20 +698,20 @@ func processMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mu
 		execs:          r.exec.execs,
 		perTestProf:    fc.perTestProf,
 		extraTestFlags: r.exec.extraTestFlags,
-		runMutantID:    r.opts.Exec.RunMutantID,
 		tmpDir:         r.tmpDir,
+		out:            jobOutput{stdout: r.stdout, stderr: r.stderr},
 		source: mutationSource{
 			originalFile: fc.sourceFile,
 			mutationFile: mutationFile,
 			absFile:      fc.absFile,
-			relFile:      toRelPath(fc.absFile, r.moduleRoot),
+			relFile:      baseline.RelPath(fc.absFile, r.moduleRoot),
 			moduleRoot:   r.moduleRoot,
 			original:     originalSourceCode,
 			edit:         edit,
 		},
 		packageLevelDecl: isPackageLevelDecl(fc.src, mutation.Position),
 		directiveShifted: directiveShifted,
-		adjRelFile:       toRelPath(filepath.Join(r.moduleRoot, adjPos.Filename), r.moduleRoot),
+		adjRelFile:       baseline.RelPath(filepath.Join(r.moduleRoot, adjPos.Filename), r.moduleRoot),
 		runMutantIDFound: r.runMutantIDFound,
 	}
 	select {
@@ -739,7 +787,7 @@ func skipBaselineChecks(opts *models.Options, execs []string) bool {
 	return opts.Exec.Coverage || opts.Exec.NoExec || opts.General.DryRun || len(execs) > 0
 }
 
-func runBaselineChecks(opts *models.Options, pkgs []importing.Package, execs []string, extraTestFlags []string) int {
+func runBaselineChecks(stderr io.Writer, opts *models.Options, pkgs []importing.Package, paths *importPaths, execs []string, extraTestFlags []string) int {
 	if skipBaselineChecks(opts, execs) {
 		return 0 // returnOk
 	}
@@ -752,20 +800,24 @@ func runBaselineChecks(opts *models.Options, pkgs []importing.Package, execs []s
 	}
 	var maxBaseline time.Duration
 	for _, importPkg := range pkgs {
-		pkgPath := packageImportPath(importPkg.Files)
+		pkgPath := paths.forFiles(importPkg.Files)
 		if pkgPath == "" {
 			continue
 		}
-		args := []string{"test", "-timeout", fmt.Sprintf("%ds", timeout)}
-		args = append(args, flags...)
-		args = append(args, pkgPath)
-		cmd := exec.Command("go", args...)
+		inv := goTestInvocation{
+			kind:           baselineRun,
+			target:         pkgPath,
+			recursive:      opts.Test.Recursive,
+			timeoutSeconds: timeout,
+			testFlags:      flags,
+		}
+		cmd := exec.Command("go", inv.args()...)
 		cmd.Env = os.Environ()
 		start := time.Now()
 		out, err := cmd.CombinedOutput()
 		elapsed := time.Since(start)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Baseline test failed for %q — mutation testing requires a green baseline; fix the build/tests before running go-mutesting:\n%s\n", pkgPath, out)
+			fmt.Fprintf(stderr, "Baseline test failed for %q — mutation testing requires a green baseline; fix the build/tests before running go-mutesting:\n%s\n", pkgPath, out)
 			return 3 // returnError
 		}
 		if elapsed > maxBaseline {
@@ -777,24 +829,6 @@ func runBaselineChecks(opts *models.Options, pkgs []importing.Package, execs []s
 	}
 	console.Verbose(opts, "Baseline check passed — all packages green before mutation")
 	return 0 // returnOk
-}
-
-func packageImportPath(files []string) string {
-	if len(files) == 0 {
-		return ""
-	}
-	f, err := filepath.Abs(files[0])
-	if err != nil {
-		return ""
-	}
-	dir := filepath.Dir(f)
-	cmd := exec.Command("go", "list", dir)
-	cmd.Env = os.Environ()
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 func applyAdaptiveTimeoutFromBaseline(opts *models.Options, baseline time.Duration) {
@@ -810,11 +844,10 @@ func applyAdaptiveTimeoutFromBaseline(opts *models.Options, baseline time.Durati
 		baseline.Seconds(), opts.Exec.TimeoutCoefficient, derived)
 }
 
-func buildCoverageProfile(opts *models.Options, pkgFiles []string, tmpDir string, modulePath string, extraTestFlags []string) (*coverage.Profile, time.Duration, error) {
+func buildCoverageProfile(opts *models.Options, pkgPath string, tmpDir string, modulePath string, extraTestFlags []string) (*coverage.Profile, time.Duration, error) {
 	if opts.Exec.NoExec || !opts.Exec.Coverage {
 		return nil, 0, nil
 	}
-	pkgPath := packageImportPath(pkgFiles)
 	if pkgPath == "" {
 		return nil, 0, fmt.Errorf("cannot determine package path for coverage")
 	}
@@ -830,7 +863,15 @@ func buildCoverageProfile(opts *models.Options, pkgFiles []string, tmpDir string
 		timeout = adaptiveBaselineTimeoutSeconds
 	}
 	start := time.Now()
-	if err := runCoverageProfile(pkgPath, profilePath, timeout, coverageTestFlags); err != nil {
+	inv := goTestInvocation{
+		kind:           coverageRun,
+		target:         pkgPath,
+		recursive:      opts.Test.Recursive,
+		timeoutSeconds: timeout,
+		testFlags:      coverageTestFlags,
+		profilePath:    profilePath,
+	}
+	if err := runCoverageProfile(inv); err != nil {
 		return nil, time.Since(start), err
 	}
 	elapsed := time.Since(start)
@@ -886,36 +927,39 @@ func testCountValue(testFlags []string, index int) (string, bool) {
 	return testFlags[index+1], true
 }
 
-func runCoverageProfile(pkg, profilePath string, timeoutSeconds uint, extraTestFlags []string) error {
-	args := []string{"test", "-coverprofile=" + profilePath, "-timeout", fmt.Sprintf("%ds", timeoutSeconds)}
-	args = append(args, extraTestFlags...)
-	args = append(args, pkg)
-	cmd := exec.Command("go", args...)
+func runCoverageProfile(inv goTestInvocation) error {
+	cmd := exec.Command("go", inv.args()...)
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("coverage test failed for %q: %w\n%s", pkg, err, out)
+		return fmt.Errorf("coverage test failed for %q: %w\n%s", inv.target, err, out)
 	}
-	if _, err := os.Stat(profilePath); err != nil {
-		return fmt.Errorf("coverage profile not created for %q", pkg)
+	if _, err := os.Stat(inv.profilePath); err != nil {
+		return fmt.Errorf("coverage profile not created for %q", inv.target)
 	}
 	return nil
 }
 
-func buildPerTestCoverageProfile(opts *models.Options, pkgFiles []string, modulePath string, tmpDir string, numWorkers int, extraTestFlags []string) *coverage.PerTestProfile {
-	pkgPath := packageImportPath(pkgFiles)
+// buildPerTestCoverageProfile maps each line of pkgPath to the tests that cover
+// it. With --test-recursive the tests of every subpackage are profiled too, so
+// the -run filter keeps them eligible just as the recursive mutant run does.
+func buildPerTestCoverageProfile(stdout io.Writer, opts *models.Options, pkgPath string, modulePath string, tmpDir string, numWorkers int, extraTestFlags []string) *coverage.PerTestProfile {
 	if pkgPath == "" {
 		return nil
 	}
-	testNames, err := coverage.ListTests(pkgPath)
+	pkgs, err := coverage.ListTestPackages(pkgPath, opts.Test.Recursive)
 	if err != nil {
 		console.Verbose(opts, "Per-test coverage unavailable for %q: %v", pkgPath, err)
 		return nil
 	}
-	if len(testNames) > 0 {
-		fmt.Printf("Building per-test coverage map for %q (%d tests)...\n", pkgPath, len(testNames))
+	testCount := 0
+	for _, pkg := range pkgs {
+		testCount += len(pkg.Tests)
 	}
-	prof, err := coverage.BuildPerTestProfileForTests(pkgPath, modulePath, tmpDir, opts.Exec.Timeout, numWorkers, extraTestFlags, testNames)
+	if testCount > 0 {
+		fmt.Fprintf(stdout, "Building per-test coverage map for %q (%d tests)...\n", pkgPath, testCount)
+	}
+	prof, err := coverage.BuildPerTestProfileForPackages(pkgPath, pkgs, modulePath, tmpDir, opts.Exec.Timeout, numWorkers, extraTestFlags)
 	if err != nil {
 		console.Verbose(opts, "Per-test coverage unavailable for %q: %v", pkgPath, err)
 		return nil
@@ -937,7 +981,7 @@ func calcNumWorkers(opts *models.Options, execs []string) int {
 	return n
 }
 
-func startWorkerPool(opts *models.Options, numWorkers int, report *models.Report, mu *sync.Mutex, stdout io.Writer, gitChangedLines gitdiff.ChangedLines) (chan execJob, *sync.WaitGroup) {
+func startWorkerPool(opts *models.Options, numWorkers int, report *models.Report, mu *sync.Mutex, gitChangedLines gitdiff.ChangedLines) (chan execJob, *sync.WaitGroup) {
 	if opts.Exec.NoExec || opts.General.DryRun {
 		return nil, nil
 	}
@@ -951,7 +995,7 @@ func startWorkerPool(opts *models.Options, numWorkers int, report *models.Report
 				if job.ctx != nil && job.ctx.Err() != nil {
 					continue
 				}
-				runExecJob(job, report, mu, stdout, gitChangedLines)
+				runExecJob(job, report, mu, gitChangedLines)
 			}
 		}()
 	}
@@ -993,7 +1037,7 @@ func startProgressMonitor(opts *models.Options, report *models.Report, mu *sync.
 	return stop, &wg
 }
 
-func shutdownAndCleanup(opts *models.Options, jobs chan execJob, jobWg *sync.WaitGroup, stopProgress chan struct{}, progressWg *sync.WaitGroup, tmpDir string) {
+func shutdownAndCleanup(stderr io.Writer, opts *models.Options, jobs chan execJob, jobWg *sync.WaitGroup, stopProgress chan struct{}, progressWg *sync.WaitGroup, tmpDir string) {
 	if jobs != nil {
 		close(jobs)
 		jobWg.Wait()
@@ -1006,7 +1050,7 @@ func shutdownAndCleanup(opts *models.Options, jobs chan execJob, jobWg *sync.Wai
 		return
 	}
 	if err := os.RemoveAll(tmpDir); err != nil {
-		fmt.Fprintf(os.Stderr, "go-mutesting: cannot remove %s: %v\n", tmpDir, err)
+		fmt.Fprintf(stderr, "go-mutesting: cannot remove %s: %v\n", tmpDir, err)
 		return
 	}
 	console.Debug(opts, "Remove %q", tmpDir)
@@ -1031,7 +1075,7 @@ func finalizeResults(stdout, stderr io.Writer, opts *models.Options, report *mod
 	if opts.Exec.RunMutantID != "" {
 		return returnOk
 	}
-	return checkQualityGates(opts, report, bl, moduleRoot)
+	return checkQualityGates(stderr, opts, report, bl, moduleRoot)
 }
 
 func handleBaselineUpdate(stdout, stderr io.Writer, opts *models.Options, report *models.Report, moduleRoot string) (bool, int) {
@@ -1055,7 +1099,7 @@ func printResultsIfNeeded(stdout io.Writer, opts *models.Options, report *models
 		printSummary(stdout, report)
 	}
 	if opts.Logger.GitHub {
-		printGitHubAnnotations(report)
+		printGitHubAnnotations(stdout, report)
 	}
 }
 
@@ -1146,20 +1190,20 @@ func printSummary(stdout io.Writer, report *models.Report) {
 	}
 }
 
-func printGitHubAnnotations(report *models.Report) {
+func printGitHubAnnotations(stdout io.Writer, report *models.Report) {
 	repoRoot := ""
 	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
 		repoRoot = strings.TrimSpace(string(out))
 	}
 
 	for _, m := range report.Escaped {
+		// GitHub resolves annotation paths against the repository root, which
+		// differs from the module root when the module lives in a subdirectory.
 		filePath := filepath.ToSlash(m.Mutator.OriginalFilePath)
 		if repoRoot != "" {
-			if rel, err := filepath.Rel(repoRoot, m.Mutator.OriginalFilePath); err == nil {
-				filePath = filepath.ToSlash(rel)
-			}
+			filePath = baseline.RelPath(m.Mutator.OriginalFilePath, repoRoot)
 		}
-		fmt.Printf("::warning file=%s,line=%d,title=Mutant escaped (%s)::Escaped mutation at %s:%d — add a test to kill it\n",
+		fmt.Fprintf(stdout, "::warning file=%s,line=%d,title=Mutant escaped (%s)::Escaped mutation at %s:%d — add a test to kill it\n",
 			filePath,
 			m.Mutator.OriginalStartLine,
 			m.Mutator.MutatorName,
@@ -1169,7 +1213,7 @@ func printGitHubAnnotations(report *models.Report) {
 	}
 }
 
-func checkQualityGates(opts *models.Options, report *models.Report, bl *baseline.File, moduleRoot string) int {
+func checkQualityGates(stderr io.Writer, opts *models.Options, report *models.Report, bl *baseline.File, moduleRoot string) int {
 	if opts.Score.IgnoreMsiWithNoMutations && report.Stats.TotalMutantsCount == 0 {
 		return returnOk
 	}
@@ -1177,9 +1221,9 @@ func checkQualityGates(opts *models.Options, report *models.Report, bl *baseline
 	minMsi := resolveThreshold(opts.Score.MinMsi, opts.Config.MinMsi)
 	minCoveredMsi := resolveThreshold(opts.Score.MinCoveredMsi, opts.Config.MinCoveredMsi)
 
-	escapedFail := checkEscapedGate(opts, report, bl, moduleRoot)
-	msiFail := checkMsiGate(report, minMsi)
-	coveredFail := checkCoveredMsiGate(report, minCoveredMsi)
+	escapedFail := checkEscapedGate(stderr, opts, report, bl, moduleRoot)
+	msiFail := checkMsiGate(stderr, report, minMsi)
+	coveredFail := checkCoveredMsiGate(stderr, report, minCoveredMsi)
 
 	if escapedFail || msiFail || coveredFail {
 		return returnMsiThresholdNotMet
@@ -1194,7 +1238,7 @@ func resolveThreshold(cliValue, configValue float64) float64 {
 	return cliValue
 }
 
-func checkEscapedGate(opts *models.Options, report *models.Report, bl *baseline.File, moduleRoot string) bool {
+func checkEscapedGate(stderr io.Writer, opts *models.Options, report *models.Report, bl *baseline.File, moduleRoot string) bool {
 	if !opts.Score.FailOnEscaped {
 		return false
 	}
@@ -1206,32 +1250,32 @@ func checkEscapedGate(opts *models.Options, report *models.Report, bl *baseline.
 	if bl != nil {
 		qualifier = "new "
 	}
-	fmt.Fprintf(os.Stderr, "%d %smutant(s) escaped — kill them or run --update-baseline to accept\n", len(newEscapes), qualifier)
+	fmt.Fprintf(stderr, "%d %smutant(s) escaped — kill them or run --update-baseline to accept\n", len(newEscapes), qualifier)
 	return true
 }
 
 const msiEpsilon = 1e-9
 
-func checkMsiGate(report *models.Report, minMsi float64) bool {
+func checkMsiGate(stderr io.Writer, report *models.Report, minMsi float64) bool {
 	msiPct := report.Stats.Msi * 100
 	if minMsi >= 0 && (minMsi-msiPct) > msiEpsilon {
-		fmt.Fprintf(os.Stderr, "MSI %.2f%% is below minimum required %.2f%%\n", msiPct, minMsi)
+		fmt.Fprintf(stderr, "MSI %.2f%% is below minimum required %.2f%%\n", msiPct, minMsi)
 		return true
 	}
 	return false
 }
 
-func checkCoveredMsiGate(report *models.Report, minCoveredMsi float64) bool {
+func checkCoveredMsiGate(stderr io.Writer, report *models.Report, minCoveredMsi float64) bool {
 	if minCoveredMsi <= 0 {
 		return false
 	}
 	if !report.HasCoverage {
-		fmt.Fprintf(os.Stderr, "Covered MSI cannot be checked: --coverage was not enabled (score is always 0 without a profile)\n")
+		fmt.Fprintf(stderr, "Covered MSI cannot be checked: --coverage was not enabled (score is always 0 without a profile)\n")
 		return true
 	}
 	covMsiPct := report.Stats.CoveredCodeMsi * 100
 	if (minCoveredMsi - covMsiPct) > msiEpsilon {
-		fmt.Fprintf(os.Stderr, "Covered MSI %.2f%% is below minimum required %.2f%%\n", covMsiPct, minCoveredMsi)
+		fmt.Fprintf(stderr, "Covered MSI %.2f%% is below minimum required %.2f%%\n", covMsiPct, minCoveredMsi)
 		return true
 	}
 	return false
@@ -1365,7 +1409,7 @@ func isPackageLevelDecl(file ast.Node, pos token.Pos) bool {
 	return false
 }
 
-func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex, stdout io.Writer, gitChangedLines gitdiff.ChangedLines) {
+func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex, gitChangedLines gitdiff.ChangedLines) {
 	opts := job.opts
 	mutant := job.mutant
 
@@ -1388,7 +1432,7 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex, stdout io.Wri
 	}
 	if err != nil {
 		out := fmt.Sprintf("INTERNAL ERROR %s\n", err.Error())
-		fmt.Fprint(stdout, out)
+		fmt.Fprint(job.out.stdout, out)
 		mutant.ProcessOutput = out
 		mu.Lock()
 		stats.Errored = append(stats.Errored, mutant)
@@ -1399,17 +1443,20 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex, stdout io.Wri
 	if skipForMutantID(job) {
 		return
 	}
-	job.runMutantIDFound.Store(job.runMutantID != "")
+	job.runMutantIDFound.Store(job.opts.Exec.RunMutantID != "")
 
 	execExitCode := mutateExec(job, &mutant)
 	console.Debug(opts, "Exited with %d", execExitCode)
 
 	mu.Lock()
 	defer mu.Unlock()
-	recordMutantResult(opts, stats, mutant, execExitCode, mutantLocation(opts, mutant))
+	recordMutantResult(job.out.stdout, opts, stats, mutant, execExitCode, mutantLocation(opts, mutant))
 }
 
 func mutantLocation(opts *models.Options, mutant models.Mutant) string {
+	// Console locations are for the user at the terminal, so they stay
+	// relative to the working directory rather than using the module-root
+	// identity path from baseline.RelPath.
 	loc := mutant.Mutator.OriginalFilePath
 	if rel, err := filepath.Rel(".", loc); err == nil {
 		loc = filepath.ToSlash(rel)
@@ -1443,22 +1490,14 @@ func skipForGitDiff(job execJob, gitChangedLines gitdiff.ChangedLines) bool {
 	return false
 }
 
-func toRelPath(absOrRel, moduleRoot string) string {
-	rel, err := filepath.Rel(moduleRoot, absOrRel)
-	if err != nil {
-		return filepath.ToSlash(absOrRel)
-	}
-	return filepath.ToSlash(rel)
-}
-
 func skipForMutantID(job execJob) bool {
-	if job.runMutantID == "" {
+	if job.opts.Exec.RunMutantID == "" {
 		return false
 	}
-	relFile := toRelPath(job.mutant.Mutator.OriginalFilePath, job.source.moduleRoot)
+	relFile := baseline.RelPath(job.mutant.Mutator.OriginalFilePath, job.source.moduleRoot)
 	diffOut, _ := exec.Command("diff", "--label=Original", "--label=New", "-u", job.source.originalFile, job.source.mutationFile).CombinedOutput()
 	id := baseline.MutantID(relFile, job.mutant.Mutator.MutatorName, string(diffOut))
-	return id != job.runMutantID
+	return id != job.opts.Exec.RunMutantID
 }
 
 func mutateExec(job execJob, mutant *models.Mutant) int {
@@ -1472,24 +1511,24 @@ func runBuiltinExec(job execJob, mutant *models.Mutant) int {
 	opts := job.opts
 	console.Debug(opts, "Execute built-in exec command for mutation")
 
-	diff, code := computeDiff(job.ctx, job.source.originalFile, job.source.mutationFile, mutant)
+	diff, code := computeDiff(job.ctx, job.out.stderr, job.source.originalFile, job.source.mutationFile, mutant)
 	if code != 0 {
 		return code
 	}
 
-	overlayName, code := prepareOverlay(job.tmpDir, job.source.originalFile, job.source.mutationFile)
+	overlayName, code := prepareOverlay(job.out.stderr, job.tmpDir, job.source.originalFile, job.source.mutationFile)
 	if code != 0 {
 		return code
 	}
 	defer os.Remove(overlayName)
 
-	execExitCode := runGoTest(job.ctx, opts, job.pkg, overlayName, job.perTestProf, job.source.absFile, int(mutant.Mutator.OriginalStartLine), job.extraTestFlags)
+	execExitCode := runGoTest(job, overlayName, int(mutant.Mutator.OriginalStartLine))
 
 	mutant.Diff = string(diff)
 	return mapTestExitToResult(execExitCode)
 }
 
-func computeDiff(ctx context.Context, file, mutationFile string, mutant *models.Mutant) ([]byte, int) {
+func computeDiff(ctx context.Context, stderr io.Writer, file, mutationFile string, mutant *models.Mutant) ([]byte, int) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1500,77 +1539,54 @@ func computeDiff(ctx context.Context, file, mutationFile string, mutant *models.
 
 	diffExitCode, ok := commandExitCode(err)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "go-mutesting: diff error: %v\n", err)
+		fmt.Fprintf(stderr, "go-mutesting: diff error: %v\n", err)
 		return nil, 3
 	}
 	if diffExitCode != 0 && diffExitCode != 1 {
-		fmt.Fprintf(os.Stderr, "go-mutesting: diff exited with code %d\n", diffExitCode)
+		fmt.Fprintf(stderr, "go-mutesting: diff exited with code %d\n", diffExitCode)
 		return nil, 3
 	}
 	return diff, 0
 }
 
-func prepareOverlay(tmpDir, file, mutationFile string) (string, int) {
+func prepareOverlay(stderr io.Writer, tmpDir, file, mutationFile string) (string, int) {
 	absOrig, _ := filepath.Abs(file)
 	absMut, _ := filepath.Abs(mutationFile)
 	overlayName, err := writeOverlayFile(tmpDir, absOrig, absMut)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "go-mutesting: cannot create overlay file: %v\n", err)
+		fmt.Fprintf(stderr, "go-mutesting: cannot create overlay file: %v\n", err)
 		return "", 3
 	}
 	return overlayName, 0
 }
 
-// mutantGoTestArgs assembles the `go test` argument list for a mutant run.
-// Mutants are not meant to be lint-clean, so `go vet` is disabled by default
-// (see #106): `go test` runs a vet subset that exits 1 on any diagnostic, and
-// mapTestExitToResult would count such a mutant as KILLED even though no test
-// failed. An explicit -vet in the user's extra test flags wins.
-func mutantGoTestArgs(overlayName string, timeoutSeconds uint, extraTestFlags []string, runFilter, pkgName string) []string {
-	args := []string{"test", "-overlay=" + overlayName, "-timeout", fmt.Sprintf("%ds", timeoutSeconds)}
-	args = append(args, extraTestFlags...)
-	if !hasVetFlag(extraTestFlags) {
-		args = append(args, "-vet=off")
+func runGoTest(job execJob, overlayName string, startLine int) int {
+	ctx, opts := job.ctx, job.opts
+	inv := goTestInvocation{
+		kind:           mutantRun,
+		target:         job.pkg.Path(),
+		recursive:      opts.Test.Recursive,
+		timeoutSeconds: opts.Exec.Timeout,
+		testFlags:      job.extraTestFlags,
+		overlay:        overlayName,
+		runFilter:      perTestRunFilter(job.perTestProf, job.source.absFile, startLine),
 	}
-	if runFilter != "" {
-		args = append(args, "-run", runFilter)
-	}
-	args = append(args, pkgName)
-	return args
-}
-
-func hasVetFlag(testFlags []string) bool {
-	for _, flag := range testFlags {
-		if flag == "-vet" || flag == "--vet" || strings.HasPrefix(flag, "-vet=") || strings.HasPrefix(flag, "--vet=") {
-			return true
-		}
-	}
-	return false
-}
-
-func runGoTest(ctx context.Context, opts *models.Options, pkg *types.Package, overlayName string, perTestProf *coverage.PerTestProfile, absFile string, startLine int, extraTestFlags []string) int {
-	pkgName := pkg.Path()
-	if opts.Test.Recursive {
-		pkgName += "/..."
-	}
-
-	runFilter := perTestRunFilter(perTestProf, absFile, startLine)
 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	goTestCmd := exec.CommandContext(ctx, "go", mutantGoTestArgs(overlayName, opts.Exec.Timeout, extraTestFlags, runFilter, pkgName)...)
+	goTestCmd := exec.CommandContext(ctx, "go", inv.args()...)
 	goTestCmd.Env = os.Environ()
 	test, err := goTestCmd.CombinedOutput()
 
 	execExitCode, ok := commandExitCode(err)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "go-mutesting: go test error: %v\n", err)
+		fmt.Fprintf(job.out.stderr, "go-mutesting: go test error: %v\n", err)
 		return 3
 	}
 
 	if opts.General.Debug {
-		fmt.Printf("%s\n", test)
+		fmt.Fprintf(job.out.stdout, "%s\n", test)
 	}
 	return classifyGoTestResult(execExitCode, test)
 }
@@ -1606,8 +1622,8 @@ func runCustomExec(job execJob, mutant *models.Mutant) int {
 		defer cancel()
 	}
 	execCommand := exec.CommandContext(ctx, job.execs[0], job.execs[1:]...)
-	execCommand.Stderr = os.Stderr
-	execCommand.Stdout = os.Stdout
+	execCommand.Stderr = job.out.stderr
+	execCommand.Stdout = job.out.stdout
 	execCommand.Env = append(os.Environ(), []string{
 		"MUTATE_CHANGED=" + mutationFile,
 		fmt.Sprintf("MUTATE_DEBUG=%t", opts.General.Debug),
@@ -1621,18 +1637,18 @@ func runCustomExec(job execJob, mutant *models.Mutant) int {
 	}
 
 	if err := execCommand.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "go-mutesting: custom exec failed to start: %v\n", err)
+		fmt.Fprintf(job.out.stderr, "go-mutesting: custom exec failed to start: %v\n", err)
 		return 3
 	}
 
 	err := execCommand.Wait()
 	if ctx.Err() != nil {
-		fmt.Fprintf(os.Stderr, "go-mutesting: custom exec timed out or was cancelled: %v\n", ctx.Err())
+		fmt.Fprintf(job.out.stderr, "go-mutesting: custom exec timed out or was cancelled: %v\n", ctx.Err())
 		return 3
 	}
 	execExitCode, ok := commandExitCode(err)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "go-mutesting: custom exec wait error: %v\n", err)
+		fmt.Fprintf(job.out.stderr, "go-mutesting: custom exec wait error: %v\n", err)
 		return 3
 	}
 	return execExitCode
@@ -1702,14 +1718,14 @@ func statusVisible(opts *models.Options, letter byte) bool {
 	return true
 }
 
-func recordMutantResult(opts *models.Options, stats *models.Report, mutant models.Mutant, execExitCode int, msg string) {
+func recordMutantResult(stdout io.Writer, opts *models.Options, stats *models.Report, mutant models.Mutant, execExitCode int, msg string) {
 	switch execExitCode {
 	case 0:
 		recordKilled(opts, stats, mutant, msg)
 	case 1:
 		recordEscaped(opts, stats, mutant, msg)
 	case 2:
-		recordSkipped(opts, stats, mutant, msg)
+		recordSkipped(stdout, opts, stats, mutant, msg)
 	default:
 		recordErrored(opts, stats, mutant, msg)
 	}
@@ -1751,13 +1767,13 @@ func recordEscaped(opts *models.Options, stats *models.Report, mutant models.Mut
 	stats.Stats.EscapedCount++
 }
 
-func recordSkipped(opts *models.Options, stats *models.Report, mutant models.Mutant, msg string) {
+func recordSkipped(stdout io.Writer, opts *models.Options, stats *models.Report, mutant models.Mutant, msg string) {
 	out := fmt.Sprintf("SKIP %s\n", msg)
 	if statusVisible(opts, 's') {
 		console.PrintSkip(out)
 	}
 	if opts.General.Verbose {
-		fmt.Println("Mutation did not compile")
+		fmt.Fprintln(stdout, "Mutation did not compile")
 	}
 	if opts.General.Debug && !opts.General.NoDiffs && mutant.Diff != "" {
 		console.PrintDiff([]byte(mutant.Diff))
