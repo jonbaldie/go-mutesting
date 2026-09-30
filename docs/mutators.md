@@ -28,7 +28,7 @@ Swaps bitwise operators.
 | `<<` | `>>` |
 
 ### arithmetic/assign\_invert
-Inverts compound assignment operators.
+Inverts compound assignment operators. Multiplication assignments (`*=`) whose right-hand side is constant zero are skipped to avoid division by zero compile errors.
 
 | Original | Mutated |
 | :------- | :------ |
@@ -55,7 +55,7 @@ Strips compound assignment operators, replacing them with plain `=`. Shift assig
 | … | `=` |
 
 ### arithmetic/negate
-Inverts unary minus expressions. Catches code that relies on a sign flip that tests don't verify.
+Inverts unary minus expressions. Catches code that relies on a sign flip that tests don't verify. Signed integer minimum boundary constants (where positive inversion produces integer constant overflow) are skipped to avoid uncompilable mutants.
 
 | Original | Mutated |
 | :------- | :------ |
@@ -75,10 +75,10 @@ Inserts a `break` at the start of each range loop body, causing only the first i
 ## Numbers
 
 ### numbers/incrementer
-Increments integer and float literals by 1.
+Increments integer and float literals by 1. Maximum boundary literals for bounded integer types, and minimum signed-integer boundary constants under unary minus (e.g. `int8(-128)`), are skipped where incrementing would overflow, to avoid uncompilable mutants.
 
 ### numbers/decrementer
-Decrements integer and float literals by 1.
+Decrements integer and float literals by 1. Zero literals in unsigned integer contexts (where decrementing produces integer constant overflow) are skipped to avoid uncompilable mutants.
 
 ### numbers/float-negate
 Replaces a float literal with its negation.
@@ -136,13 +136,13 @@ Removes the `!` operator from negated conditions in `if`, `for`, and `&&`/`||` e
 ## Branch
 
 ### branch/case
-Empties `case` bodies in `switch` statements. When emptying a case would remove the enclosing function's terminating statement, the mutant keeps a zero-value `return` so it still compiles.
+Empties `case` bodies in `switch` statements. When emptying a case would remove the enclosing function's terminating statement, the mutant keeps a zero-value `return` so it still compiles. Imported struct return types use the package name local to the source file, including aliases. Skips mutations that would leave an imported package unused.
 
 ### branch/if
-Empties the body of `if` and `else if` branches. When emptying the branch would remove the enclosing function's terminating statement, the mutant keeps a zero-value `return` so it still compiles.
+Empties the body of `if` and `else if` branches. When emptying the branch would remove the enclosing function's terminating statement, the mutant keeps a zero-value `return` so it still compiles. Imported struct return types use the package name local to the source file, including aliases. Skips mutations that would leave an imported package unused.
 
 ### branch/else
-Empties the body of `else` branches. When emptying the branch would remove the enclosing function's terminating statement, the mutant keeps a zero-value `return` so it still compiles.
+Empties the body of `else` branches. When emptying the branch would remove the enclosing function's terminating statement, the mutant keeps a zero-value `return` so it still compiles. Imported struct return types use the package name local to the source file, including aliases. Skips mutations that would leave an imported package unused.
 
 ## Expression
 
@@ -156,7 +156,7 @@ Swaps `&&` and `||` operators.
 Makes each operand of `&&` and `||` irrelevant by replacing it with `true` or `false`. Operands whose removal would leave a local variable or import unused are skipped to avoid uncompilable mutants.
 
 ### expression/context-nil
-Replaces `context.Context` arguments at call sites with `nil`. Finds code paths that silently accept a nil context instead of propagating a real one.
+Replaces `context.Context` arguments at call sites with `nil`. Arguments whose replacement would leave a local variable or imported package unused are skipped. Finds code paths that silently accept a nil context instead of propagating a real one.
 
 | Original | Mutated |
 | :------- | :------ |
@@ -194,13 +194,13 @@ Replaces non-empty string literals in `==` and `!=` comparisons with `""`. Finds
 ## Statement
 
 ### statement/remove
-Removes assignment, increment, decrement, and expression statements.
+Removes assignment, increment, decrement, and expression statements. Skips mutations that would leave an imported package unused.
 
 ### statement/remove-self-assign
 Removes self-assignment statements (`a = a`). These are typically dead code; this mutator confirms tests don't accidentally rely on them.
 
 ### statement/return
-Replaces each return value with the zero value for its type (`false` for bool, `0` for int, `""` for string, `nil` for pointers and interfaces). Uses `go/types` for type resolution. When zeroing a return value whose only use was a local variable, emits a preceding `_ = x` assignment to keep the variable used and ensure the mutant compiles. Skips mutations that would leave an imported package unused. Finds functions whose return values tests never validate.
+Replaces each return value with the zero value for its type (`false` for bool, `0` for int, `""` for string, `nil` for pointers and interfaces). Uses `go/types` for type resolution and preserves the package name local to the source file, including aliases, for imported struct types. When zeroing a return value whose only use was a local variable, emits a preceding `_ = x` assignment to keep the variable used and ensure the mutant compiles. Skips mutations that would leave an imported package unused. Finds functions whose return values tests never validate.
 
 ### statement/defer-remove
 Removes the `defer` keyword, turning deferred calls into immediate calls. Tests whether the timing of cleanup matters — e.g. mutex unlocks and file closes that must happen after the function body, not during it.

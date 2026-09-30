@@ -16,7 +16,7 @@ Targets can be Go source files, directories, or import paths. The `...` wildcard
 | :--- | :------ | :---------- |
 | `--exec` | (built-in) | Custom exec command for testing each mutation |
 | `--exec-timeout` | `10` | Seconds to wait before killing the test process |
-| `--timeout-coefficient` | `0` (disabled) | Scale per-mutation timeout as a multiple of an uncached baseline test-suite run (e.g. `3` = 3× the clean run). Overrides `--exec-timeout` when set. |
+| `--timeout-coefficient` | `0` (disabled) | Scale per-mutation timeout as a multiple of an uncached baseline test-suite run (e.g. `3` = 3× the clean run). The clean pre-flight/coverage run uses a generous cap so a suite slower than `--exec-timeout` can still be measured. Overrides `--exec-timeout` when set. |
 | `--workers` | all CPUs | Number of parallel mutation workers |
 | `--config` | — | Path to YAML config file |
 
@@ -30,12 +30,12 @@ Targets can be Go source files, directories, or import paths. The `...` wildcard
 | `--output-statuses` | Show only listed result statuses in the terminal: `k`=killed `e`=escaped `s`=skipped `n`=not-covered `x`=errored (e.g. `--output-statuses=ke`). Does not affect JSON reports. Overrides `--quiet` when set. |
 | `--quiet` | Suppress killed/skipped lines; show only escaped mutants and summary (equivalent to `--output-statuses=e`) |
 | `--verbose` | Print full test output for each mutation |
-| `--debug` | Print internal debug information |
+| `--debug` | Print internal debug information, including each mutation's 32-character blacklist checksum |
 | `--logger-github` | Emit escaped mutants as `::warning` GitHub Actions annotations |
 | `--logger-gitlab` | Write `go-mutesting-gitlab.json` in GitLab Code Quality format |
 | `--logger-summary-json` | Write compact stats to `go-mutesting-summary.json` |
 | `--logger-agentic-json` | Write LLM-ready report to `go-mutesting-agentic.json` |
-| `--run-mutant-id` | Run only the mutant with this stable ID (copy the `id` field from `go-mutesting-agentic.json`) |
+| `--run-mutant-id` | Run only the mutant with this stable ID (copy the `id` field from `go-mutesting-agentic.json`); exits 3 if no matching mutant is found. Valid-ID runs suppress the summary and quality gates. |
 | `--version`, `-v` | Print version and exit 0 |
 
 ## Quality gates
@@ -51,9 +51,9 @@ Targets can be Go source files, directories, or import paths. The `...` wildcard
 
 | Flag | Description |
 | :--- | :---------- |
-| `--coverage` | Run `go test -coverprofile` first; skip test execution for uncovered lines and exclude them from covered-MSI. A coverage-test failure exits 3. |
+| `--coverage` | Run `go test -coverprofile` first; stop with exit 3 if it fails, otherwise skip test execution for uncovered lines and exclude them from covered-MSI |
 | `--per-test` | Build a per-test coverage map and run only the tests that cover each mutation. Best for packages with slow tests. Pairs well with `--coverage`. With `--test-recursive`, the map also covers subpackage tests. |
-| `--test-flags` | Extra flags passed to every `go test` call (e.g. `--test-flags=-short`). Use the `=` form for values starting with a dash. Ignored when `--exec` is set. Adaptive timeouts add `-count=1` unless you supply a positive `-count`. |
+| `--test-flags` | Extra flags passed to every `go test` call (e.g. `--test-flags=-short`). Use the `=` form for values starting with a dash. Adaptive timeout preserves a positive `-count=N`, adds `-count=1` when absent, and rejects `-count=0`. Ignored when `--exec` is set. |
 
 ## Vet
 
@@ -86,7 +86,7 @@ If a generated mutant does not compile, it is skipped rather than counted as kil
 | Code | Meaning |
 | :--- | :------ |
 | 0 | All mutations tested; all quality gates passed |
-| 3 | Tool or test error |
+| 3 | Invalid input or tool failure, including a failed clean coverage run |
 | 4 | A quality gate was not met (`--min-msi`, `--min-covered-msi`, or `--fail-on-escaped`) |
 
 ## Related project report

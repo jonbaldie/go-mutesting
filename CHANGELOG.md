@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.19] — 2026-09-30
+
+Replicates quality-gates/mutago main through `f707511`, including the macOS test-binary reuse change (quality-gates/mutago#256).
+
+### Changed
+- On macOS, each worker reuses test-binary files to avoid repeated operating-system checks. Scores and user-supplied `-exec` flags are unchanged. Other systems are unchanged.
+- Sync CI dependency versions and behaviour documentation with mutago.
+
+### Fixed
+- Set `skip_without_test` and `skip_with_build_tags` schema defaults to `true`, matching the CLI.
+
 ### Removed
 - Remove the repository-local `.agents/skills` copies; use personal skills instead.
 
@@ -674,4 +685,5 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.15]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.6...v2.10.15
 [v2.10.16]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.15...v2.10.16
 [v2.10.18]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.16...v2.10.18
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...HEAD
+[v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...HEAD
