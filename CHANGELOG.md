@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+### Removed
+- Remove the repository-local `.agents/skills` copies; use personal skills instead.
+
 ## [v2.10.18] — 2026-09-29
 
 Replicates quality-gates/mutago v2.10.17 and v2.10.18.
