@@ -838,7 +838,7 @@
 <tr>
 <td style="text-align: left;"><code>--timeout-coefficient</code></td>
 <td style="text-align: left;"><code>0</code> (disabled)</td>
-<td style="text-align: left;">Scale per-mutation timeout as a multiple of an uncached baseline test-suite run (e.g. <code>3</code> = 3× the clean run). Overrides <code>--exec-timeout</code> when set.</td>
+<td style="text-align: left;">Scale per-mutation timeout as a multiple of an uncached baseline test-suite run (e.g. <code>3</code> = 3× the clean run). The clean pre-flight/coverage run uses a generous cap so a suite slower than <code>--exec-timeout</code> can still be measured. Overrides <code>--exec-timeout</code> when set.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--workers</code></td>
@@ -887,7 +887,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>--debug</code></td>
-<td style="text-align: left;">Print internal debug information</td>
+<td style="text-align: left;">Print internal debug information, including each mutation's 32-character blacklist checksum</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--logger-github</code></td>
@@ -907,7 +907,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>--run-mutant-id</code></td>
-<td style="text-align: left;">Run only the mutant with this stable ID (copy the <code>id</code> field from <code>go-mutesting-agentic.json</code>)</td>
+<td style="text-align: left;">Run only the mutant with this stable ID (copy the <code>id</code> field from <code>go-mutesting-agentic.json</code>); exits 3 if no matching mutant is found. Valid-ID runs suppress the summary and quality gates.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--version</code>, <code>-v</code></td>
@@ -958,7 +958,7 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>--coverage</code></td>
-<td style="text-align: left;">Run <code>go test -coverprofile</code> first; skip test execution for uncovered lines and exclude them from covered-MSI. A coverage-test failure exits 3.</td>
+<td style="text-align: left;">Run <code>go test -coverprofile</code> first; stop with exit 3 if it fails, otherwise skip test execution for uncovered lines and exclude them from covered-MSI</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--per-test</code></td>
@@ -966,7 +966,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>--test-flags</code></td>
-<td style="text-align: left;">Extra flags passed to every <code>go test</code> call (e.g. <code>--test-flags=-short</code>). Use the <code>=</code> form for values starting with a dash. Ignored when <code>--exec</code> is set. Adaptive timeouts add <code>-count=1</code> unless you supply a positive <code>-count</code>.</td>
+<td style="text-align: left;">Extra flags passed to every <code>go test</code> call (e.g. <code>--test-flags=-short</code>). Use the <code>=</code> form for values starting with a dash. Adaptive timeout preserves a positive <code>-count=N</code>, adds <code>-count=1</code> when absent, and rejects <code>-count=0</code>. Ignored when <code>--exec</code> is set.</td>
 </tr>
 </tbody>
 </table>
@@ -1036,7 +1036,7 @@
 </tr>
 <tr>
 <td style="text-align: left;">3</td>
-<td style="text-align: left;">Tool or test error</td>
+<td style="text-align: left;">Invalid input or tool failure, including a failed clean coverage run</td>
 </tr>
 <tr>
 <td style="text-align: left;">4</td>
