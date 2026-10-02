@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.20] — 2026-10-02
+
+Replicates quality-gates/mutago v2.10.20.
+
+### Fixed
+- `numbers/incrementer` no longer mutates integer literals equal to `math.MaxInt64` (such as untyped `const Max = 9223372036854775807`). Before, `+1` wrapped to `-9223372036854775808`, so the mutant failed to compile in unsigned contexts and was skipped.
+
 ## [v2.10.19] — 2026-09-30
 
 Replicates quality-gates/mutago main through `f707511`, including the macOS test-binary reuse change (quality-gates/mutago#256).
@@ -686,4 +693,5 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.16]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.15...v2.10.16
 [v2.10.18]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.16...v2.10.18
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...HEAD
+[v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...HEAD
