@@ -232,14 +232,15 @@ By comparing this output to the original output we can state that we now have 7 
 
 ### <a name="skip-make-args"></a>Skipping make() arguments mutation
 
-Before this filter, numeric arguments in make() calls for slices and maps were mutated by incrementer/decrementer mutators, leading to false positives or invalid code:
+Before this filter, numeric arguments in make() calls for slices, maps, and channels were mutated by incrementer/decrementer mutators, leading to false positives or invalid code:
 
 ```go
 // Original code
-slice := make([]int, 0)  // Capacity argument (0) was mutated
+slice := make([]int, 0)   // Capacity argument (0) was mutated
+channel := make(chan int, 0) // Buffer argument (0) was mutated
 
 // Mutated versions
-slice := make([]int, 1)  // Incrementer mutation
+slice := make([]int, 1)    // Incrementer mutation
 slice := make([]int, -1)   // Decrementer mutation
 ```
 
@@ -249,7 +250,7 @@ These mutations are almost always irrelevant because:
 2. Capacity/length arguments are typically intentional
 3. Tests rarely validate exact allocation sizes
 
-The filter prevents mutations in make() arguments.
+The filter prevents mutations in make() arguments for slices, maps, and channels.
 
 ### <a name="quality-gates"></a>Quality gates
 
@@ -469,7 +470,7 @@ x = 42
 // mutator-disable-next-line *
 x = 42
 
-// mutator-disable-next-line branch/if, increment
+// mutator-disable-next-line branch/if, numbers/incrementer
 if x > 0 {
     y += 1
 }
@@ -618,6 +619,8 @@ Name	           | Original | Mutated  |
 | IncrementFloat   | 10.1     | 11.1     |
 
 #### numbers/decrementer
+Decrements integer and float literals by 1. Zero literals in unsigned integer contexts and non-negative constant contexts (indexes, slice bounds, array lengths, and shift counts) are skipped where decrementing would produce uncompilable code.
+
 Name	           | Original | Mutated  |
 | :--------------- | :------- | :------- |
 | DecrementInteger | 100      | 99       |
@@ -783,9 +786,9 @@ The config contains the following parameters:
 | min_msi              | 0             | Minimum required MSI (0–100). 0 means no gate.                                                                                                                    |
 | min_covered_msi      | 0             | Minimum required covered-code MSI (0–100). 0 means no gate.                                                                                                       |
 | exclude_dirs         | []string(nil) | File path prefixes to skip. Any file whose path starts with one of these strings is excluded. `vendor/` skips all files under vendor; `internal/generated` skips any path starting with that string. |
-| disable_mutators     | []string(nil) | Mutator names to disable via config. Merged with `--disable` CLI flags. Supports trailing-`*` wildcard (e.g. `arithmetic/*`). |
-| enable_mutators      | []string(nil) | Allowlist: if non-empty, only matching mutators run. `--disable` can still exclude entries. Supports trailing-`*` wildcard. |
-| ignore_source_lines  | []string(nil) | List of regexes. Any physical source line matching one of these patterns is skipped entirely. Useful for suppressing mutations on generated code or boilerplate. |
+| disable_mutators     | []string(nil) | Mutator names to disable via config. Merged with `--disable` CLI flags. Supports trailing-`*` wildcard (e.g. `arithmetic/*`). Names that match no mutator print a warning on stderr. |
+| enable_mutators      | []string(nil) | Allowlist: if non-empty, only matching mutators run. `--disable` can still exclude entries. Supports trailing-`*` wildcard. Names that match no mutator print a warning on stderr. |
+| ignore_source_lines  | []string(nil) | List of regexes. Any physical source line matching one of these patterns is skipped entirely. Useful for suppressing mutations on generated code or boilerplate. Invalid regexes are ignored with a warning on stderr. |
 
 Example config file:
 

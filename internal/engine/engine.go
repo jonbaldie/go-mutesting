@@ -289,6 +289,8 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 		return nil, fmt.Errorf("Cannot load target packages: %w", err)
 	}
 
+	warnIgnoredSelectors(e.Stderr, opts)
+
 	report := &models.Report{}
 	var reportMu sync.Mutex
 
@@ -375,6 +377,32 @@ func buildActiveMutators(opts *models.Options) []mutatorItem {
 		mutators = append(mutators, mutatorItem{Name: name, Mutator: m})
 	}
 	return mutators
+}
+
+// warnIgnoredSelectors writes a warning for each enable or disable selector
+// that matches no registered mutator and each ignore_source_lines pattern that
+// does not compile, so typos are not silently ignored.
+func warnIgnoredSelectors(w io.Writer, opts *models.Options) {
+	selectors := append(append([]string{}, opts.Mutator.DisableMutators...), opts.Config.DisableMutators...)
+	selectors = append(selectors, opts.Config.EnableMutators...)
+	names := mutator.List()
+	for _, selector := range selectors {
+		if !matchesAnyName(selector, names) {
+			fmt.Fprintf(w, "warning: mutator selector %q matches no registered mutator\n", selector)
+		}
+	}
+	for _, invalid := range filter.InvalidSourceLinePatterns(opts.Config.IgnoreSourceLines) {
+		fmt.Fprintf(w, "warning: invalid ignore_source_lines regex %q ignored: %v\n", invalid.Pattern, invalid.Err)
+	}
+}
+
+func matchesAnyName(pattern string, names []string) bool {
+	for _, name := range names {
+		if matchesMutator(pattern, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func matchesAnyMutator(patterns []string, name string) bool {
@@ -522,10 +550,11 @@ func processFile(r *mutationRun, file string, coverProfile *coverage.Profile, pe
 
 	annotationProcessor := annotation.NewProcessor()
 	skipFilterProcessor := filter.NewSkipMakeArgsFilter()
+	nonNegativeDecrementFilter := filter.NewNonNegativeDecrementFilter()
 	sourceLineFilter := filter.NewSourceLineRegexFilter(r.opts.Config.IgnoreSourceLines)
 
-	collectors := []filter.NodeCollector{annotationProcessor, skipFilterProcessor, sourceLineFilter}
-	nodeFilters := []filter.NodeFilter{annotationProcessor, skipFilterProcessor, sourceLineFilter}
+	collectors := []filter.NodeCollector{annotationProcessor, skipFilterProcessor, nonNegativeDecrementFilter, sourceLineFilter}
+	nodeFilters := []filter.NodeFilter{annotationProcessor, skipFilterProcessor, nonNegativeDecrementFilter, sourceLineFilter}
 
 	checked, err := parser.ParseAndTypeCheckFile(file, collectors)
 	if err != nil {
@@ -882,22 +911,6 @@ func buildCoverageProfile(opts *models.Options, pkgPath string, tmpDir string, m
 	return prof, elapsed, nil
 }
 
-func hasTestCountFlag(testFlags []string) bool {
-	for _, flag := range testFlags {
-		if flag == "-count" || strings.HasPrefix(flag, "-count=") {
-			return true
-		}
-	}
-	return false
-}
-
-func uncachedTestFlags(testFlags []string) []string {
-	if hasTestCountFlag(testFlags) {
-		return testFlags
-	}
-	return append(append([]string{}, testFlags...), "-count=1")
-}
-
 func validateAdaptiveTimeoutTestCount(opts *models.Options) error {
 	if opts.Exec.TimeoutCoefficient <= 0 || opts.Exec.NoExec || opts.General.DryRun || strings.TrimSpace(opts.Exec.Exec) != "" {
 		return nil
@@ -915,16 +928,6 @@ func validateAdaptiveTimeoutTestCount(opts *models.Options) error {
 		return fmt.Errorf("adaptive timeout requires a positive test count, got %d", count)
 	}
 	return nil
-}
-
-func testCountValue(testFlags []string, index int) (string, bool) {
-	if value, found := strings.CutPrefix(testFlags[index], "-count="); found {
-		return value, true
-	}
-	if testFlags[index] != "-count" || index+1 >= len(testFlags) {
-		return "", false
-	}
-	return testFlags[index+1], true
 }
 
 func runCoverageProfile(inv goTestInvocation) error {
@@ -947,7 +950,8 @@ func buildPerTestCoverageProfile(stdout io.Writer, opts *models.Options, pkgPath
 	if pkgPath == "" {
 		return nil
 	}
-	pkgs, err := coverage.ListTestPackages(pkgPath, opts.Test.Recursive)
+	tc := perTestToolchain{testFlags: extraTestFlags, timeoutSeconds: opts.Exec.Timeout}
+	pkgs, err := coverage.ListTestPackages(tc, pkgPath, opts.Test.Recursive)
 	if err != nil {
 		console.Verbose(opts, "Per-test coverage unavailable for %q: %v", pkgPath, err)
 		return nil
@@ -959,7 +963,7 @@ func buildPerTestCoverageProfile(stdout io.Writer, opts *models.Options, pkgPath
 	if testCount > 0 {
 		fmt.Fprintf(stdout, "Building per-test coverage map for %q (%d tests)...\n", pkgPath, testCount)
 	}
-	prof, err := coverage.BuildPerTestProfileForPackages(pkgPath, pkgs, modulePath, tmpDir, opts.Exec.Timeout, numWorkers, extraTestFlags)
+	prof, err := coverage.BuildPerTestProfileForPackages(tc, pkgPath, pkgs, modulePath, tmpDir, numWorkers)
 	if err != nil {
 		console.Verbose(opts, "Per-test coverage unavailable for %q: %v", pkgPath, err)
 		return nil
