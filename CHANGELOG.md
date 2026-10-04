@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.21] — 2026-10-04
+
+Replicates quality-gates/mutago v2.10.21.
+
+### Fixed
+- `--per-test` now applies build flags from `--test-flags` (such as `-tags`, `-race` and `-ldflags`) when it lists packages and tests. Before, a test behind a build tag was left out of the per-test map, so the `-run` filter skipped it and mutants it would catch escaped. `--count` is now treated the same as `-count` (quality-gates/mutago#275).
+- Warn on stderr when a `--disable`, `disable_mutators`, or `enable_mutators` name matches no mutator, and when an `ignore_source_lines` regex does not compile. Before, these were ignored silently. The README annotation example now uses `numbers/incrementer` instead of the non-existent `increment` (quality-gates/mutago#270).
+- Apply `ignore_source_lines` to statement mutations at each mutation's source position, without suppressing other statements in the same block (quality-gates/mutago#269).
+- `numbers/decrementer` now skips zero in indexes, slice bounds, array lengths, channel capacities, and shift counts, avoiding mutants that fail to compile (quality-gates/mutago#264).
+
 ## [v2.10.20] — 2026-10-02
 
 Replicates quality-gates/mutago v2.10.20.
@@ -694,4 +704,5 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.18]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.16...v2.10.18
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...HEAD
+[v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.21...HEAD

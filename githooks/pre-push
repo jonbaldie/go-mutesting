@@ -88,6 +88,7 @@ echo "pre-push: running mutation testing scoped to the diff against origin/maste
 # packages at all.
 STATUS=0
 "$GO_MUTESTING_BIN" \
+	--workers=1 \
 	--exec-timeout 30 \
 	--coverage \
 	--git-diff-lines \

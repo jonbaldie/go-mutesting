@@ -37,6 +37,42 @@ func TestMainSimple(t *testing.T) {
 	)
 }
 
+func TestMainDecrementerSkipsNonNegativeContexts(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/decrementer\n\ngo 1.26.6\n")
+	writeFixtureFile(t, filepath.Join(root, "go-mutesting.yml"), "enable_mutators:\n  - numbers/decrementer\n")
+	writeFixtureFile(t, filepath.Join(root, "example.go"), `package example
+
+func GetFirst(xs []int) int { return xs[0] }
+
+func CheckNonNegativeContexts(xs []int, n uint) {
+	_ = xs[0]
+	_ = xs[0:]
+	_ = xs[:0]
+	_ = xs[:0:0]
+	var a [0]int
+	_ = a
+	_ = make(chan int, 0)
+	_ = n << 0
+	n <<= 0
+}
+`)
+	writeFixtureFile(t, filepath.Join(root, "example_test.go"), `package example
+
+import "testing"
+
+func TestGetFirst(t *testing.T) {
+	if GetFirst([]int{42}) != 42 {
+		t.Fatal("wrong result")
+	}
+}
+`)
+
+	out := testMain(t, root, []string{"--verbose", "--workers", "1", "--exec-timeout", "30", "--config", "go-mutesting.yml", "."}, returnOk, "mutation score")
+	assert.NotContains(t, out, "SKIP example.go")
+	assert.NotContains(t, out, "Mutation did not compile")
+}
+
 func TestMainUnknownRunMutantID(t *testing.T) {
 	out := testMain(
 		t,
@@ -159,6 +195,83 @@ func TestMainUnknownConfigField(t *testing.T) {
 		returnError,
 		"Could not parse config file",
 	)
+}
+
+func selectorWarningFixture(t *testing.T, config string) string {
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/selectors\n\ngo 1.26.6\n")
+	writeFixtureFile(t, filepath.Join(root, "go-mutesting.yml"), config)
+	writeFixtureFile(t, filepath.Join(root, "value.go"), `package selectors
+
+func Value(x int) int {
+	if x > 0 {
+		return 5
+	}
+	return 0
+}
+`)
+	writeFixtureFile(t, filepath.Join(root, "value_test.go"), `package selectors
+
+import "testing"
+
+func TestValue(t *testing.T) {
+	if got := Value(1); got != 5 {
+		t.Fatalf("Value(1) = %d, want 5", got)
+	}
+}
+`)
+	return root
+}
+
+func TestMainWarnsOnUnknownDisableFlag(t *testing.T) {
+	root := selectorWarningFixture(t, "")
+	out := testMain(t, root, []string{"--dry-run", "--disable", "bogus", "--disable", "numbers/*", "--disable", "branch/if", "--config", "go-mutesting.yml"}, returnOk, `warning: mutator selector "bogus" matches no registered mutator`)
+	assert.NotContains(t, out, `"numbers/*" matches no`)
+	assert.NotContains(t, out, `"branch/if" matches no`)
+}
+
+func TestMainWarnsOnUnknownConfigMutatorSelectors(t *testing.T) {
+	root := selectorWarningFixture(t, "enable_mutators:\n  - branch/iff\ndisable_mutators:\n  - nope/*\n")
+	out := testMain(t, root, []string{"--dry-run", "--config", "go-mutesting.yml"}, returnOk, `warning: mutator selector "branch/iff" matches no registered mutator`)
+	assert.Contains(t, out, `warning: mutator selector "nope/*" matches no registered mutator`)
+}
+
+func TestMainReadmeDisableNextLineExampleSuppressesIncrementer(t *testing.T) {
+	source := func(directive string) string {
+		return `package selectors
+
+func Bump(x, step int) int {
+	y := x
+` + directive + `
+	if x > 0 {
+		y += step
+	}
+	return y
+}
+`
+	}
+	for _, tc := range []struct {
+		directive string
+		want      string
+	}{
+		{"", "numbers/incrementer: 1"},
+		{"\t// mutator-disable-next-line branch/if, numbers/incrementer", "Total: 0 mutation(s)"},
+	} {
+		root := t.TempDir()
+		writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/selectors\n\ngo 1.26.6\n")
+		writeFixtureFile(t, filepath.Join(root, "go-mutesting.yml"), "enable_mutators:\n  - numbers/incrementer\n")
+		writeFixtureFile(t, filepath.Join(root, "bump.go"), source(tc.directive))
+		writeFixtureFile(t, filepath.Join(root, "bump_test.go"), "package selectors\n\nimport \"testing\"\n\nfunc TestBump(t *testing.T) { _ = Bump(1, 1) }\n")
+		testMain(t, root, []string{"--dry-run", "--config", "go-mutesting.yml"}, returnOk, tc.want)
+	}
+}
+
+func TestMainWarnsOnInvalidIgnoreSourceLinesRegex(t *testing.T) {
+	root := selectorWarningFixture(t, "ignore_source_lines:\n  - 'return (5'\n  - 'return 0'\n")
+	out := testMain(t, root, []string{"--dry-run", "--config", "go-mutesting.yml"}, returnOk, `warning: invalid ignore_source_lines regex "return (5"`)
+	assert.NotContains(t, out, `regex "return 0"`)
+	assert.Equal(t, 1, strings.Count(out, "invalid ignore_source_lines regex"))
+	assert.Contains(t, out, "statement/return: 1", "valid pattern must still skip the return 0 line")
 }
 
 func TestMainSkipWithoutTest(t *testing.T) {
@@ -1112,6 +1225,122 @@ func TestMainPerTestRecursiveKeepsSubpackageTests(t *testing.T) {
 		"mutation score",
 	)
 	assert.NotContains(t, out, "ESCAPED")
+}
+
+func TestMainPerTestHonoursBuildTags(t *testing.T) {
+	// Only a test behind a build tag checks Double; the untagged test merely
+	// calls it. --test-flags=-tags=integration must reach the per-test test
+	// listing too, or the -run filter drops the tagged test and every mutant
+	// escapes (#275).
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/seamtags\n\ngo 1.22\n")
+	writeFixtureFile(t, filepath.Join(root, "calc.go"), "package seamtags\n\nfunc Double(a int) int {\n\treturn a * 2\n}\n")
+	writeFixtureFile(t, filepath.Join(root, "calc_test.go"), "package seamtags\n\nimport \"testing\"\n\nfunc TestUnit(t *testing.T) { _ = Double(3) }\n")
+	writeFixtureFile(t, filepath.Join(root, "integ_test.go"), "//go:build integration\n\npackage seamtags\n\nimport \"testing\"\n\nfunc TestIntegration(t *testing.T) {\n\tif Double(3) != 6 {\n\t\tt.Fatal(\"bad\")\n\t}\n}\n")
+
+	out := testMain(
+		t,
+		root,
+		[]string{"--workers", "1", "--exec-timeout", "30", "--coverage", "--per-test", "--test-flags=-tags=integration", "--min-msi", "100", "."},
+		returnOk,
+		"mutation score",
+	)
+	assert.Contains(t, out, "(2 tests)")
+	assert.NotContains(t, out, "ESCAPED")
+}
+
+func TestMainIgnoreSourceLinesFilterStatementMutationsByPosition(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/sourcefilter\n\ngo 1.22\n")
+	writeFixtureFile(t, filepath.Join(root, "go-mutesting.yml"), `json_output: true
+ignore_source_lines:
+  - 'return 5'
+  - 'y \+= 1'
+enable_mutators:
+  - statement/return
+  - statement/remove
+`)
+	writeFixtureFile(t, filepath.Join(root, "example.go"), `package sourcefilter
+
+func Fee(standard bool) int {
+	if standard {
+		return 3
+	}
+	return 5
+}
+
+func Bump(x int) int {
+	y := 0
+	if x > 0 {
+		y += 1
+		y += 2
+	}
+	return y
+}
+`)
+	writeFixtureFile(t, filepath.Join(root, "example_test.go"), `package sourcefilter
+
+import "testing"
+
+func TestFee(t *testing.T) {
+	if Fee(true) != 3 || Fee(false) != 5 {
+		t.Fatal("wrong fee")
+	}
+}
+
+func TestBump(t *testing.T) {
+	if Bump(1) != 3 {
+		t.Fatal("wrong bump")
+	}
+}
+`)
+
+	reportPath := filepath.Join(root, "report.json")
+	previousReportFileName := models.ReportFileName
+	models.ReportFileName = reportPath
+	t.Cleanup(func() { models.ReportFileName = previousReportFileName })
+
+	testMain(t, root, []string{"--workers", "1", "--exec-timeout", "30", "--config", "go-mutesting.yml", "."}, returnOk, "mutation score")
+
+	reportData, err := os.ReadFile(reportPath)
+	require.NoError(t, err)
+	var report models.Report
+	require.NoError(t, json.Unmarshal(reportData, &report))
+
+	mutants := append([]models.Mutant{}, report.Killed...)
+	mutants = append(mutants, report.Escaped...)
+	mutants = append(mutants, report.Skipped...)
+	mutants = append(mutants, report.Errored...)
+	mutants = append(mutants, report.NotCovered...)
+	require.NotEmpty(t, mutants)
+
+	sourceData, err := os.ReadFile(filepath.Join(root, "example.go"))
+	require.NoError(t, err)
+	sourceLines := strings.Split(string(sourceData), "\n")
+	var keptReturn, keptAssignment bool
+	for _, mutant := range mutants {
+		line := mutant.Mutator.OriginalStartLine
+		require.Greater(t, line, int64(0))
+		require.LessOrEqual(t, line, int64(len(sourceLines)))
+		sourceLine := strings.TrimSpace(sourceLines[line-1])
+
+		switch mutant.Mutator.MutatorName {
+		case "statement/return":
+			assert.NotEqual(t, "return 5", sourceLine, "matching return line must not be mutated")
+			if sourceLine == "return 3" {
+				keptReturn = true
+			}
+		case "statement/remove":
+			assert.NotEqual(t, "y += 1", sourceLine, "matching assignment line must not be mutated")
+			if sourceLine == "y += 2" {
+				keptAssignment = true
+			}
+		default:
+			t.Errorf("unexpected mutator %q", mutant.Mutator.MutatorName)
+		}
+	}
+	assert.True(t, keptReturn, "an unignored return in another block must still be mutated")
+	assert.True(t, keptAssignment, "an unignored sibling assignment must still be mutated")
 }
 
 func TestMainDryRun(t *testing.T) {
