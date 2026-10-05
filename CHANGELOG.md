@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.22] — 2026-10-05
+
+Replicates quality-gates/mutago v2.10.22.
+
+### Changed
+- `mutator-disable-next-line` and `mutator-disable-regexp` annotations now accept the trailing-`*` wildcard (such as `numbers/*`) that `--disable` and config already accept. Before, the wildcard silently did nothing in annotations. All of these names now go through one matcher, `mutator.Selector` (quality-gates/mutago#277).
+
 ## [v2.10.21] — 2026-10-04
 
 Replicates quality-gates/mutago v2.10.21.
@@ -705,4 +712,5 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.21...HEAD
+[v2.10.22]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.21...v2.10.22
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.22...HEAD
