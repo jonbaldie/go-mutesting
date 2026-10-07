@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+- `mutator-disable-next-line` and `mutator-disable-regexp` now suppress `statement/defer-remove`, `concurrency/goroutine-remove`, `statement/remove-self-assign`, `select/case-remove`, `select/default-remove`, and `composite/field-clear` on the annotated line. Before, these mutants were still run and scored (quality-gates/mutago#284).
+
 ## [v2.10.22] — 2026-10-06
 
 Replicates quality-gates/mutago v2.10.22.
