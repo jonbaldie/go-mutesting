@@ -6,7 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.23] — 2026-10-07
+
+Replicates quality-gates/mutago v2.10.23.
+
 ### Fixed
+- `--run-mutant-id` now chooses scope once, at discovery, with `--git-diff-lines`, `--blacklist`, and duplicate edits. Mutants outside that scope are not written, classified, printed, or counted. `--coverage` no longer reports them as NOT COVERED, and `--dry-run` counts the same set a real run admits (quality-gates/mutago#276).
+- Skip numeric length and capacity arguments in `make` calls with qualified (`pkg.T`) and generic (`T[...]`) types, avoiding uncompilable `numbers/decrementer` mutants (quality-gates/mutago#283).
 - `mutator-disable-next-line` and `mutator-disable-regexp` now suppress `statement/defer-remove`, `concurrency/goroutine-remove`, `statement/remove-self-assign`, `select/case-remove`, `select/default-remove`, and `composite/field-clear` on the annotated line. Before, these mutants were still run and scored (quality-gates/mutago#284).
 
 ## [v2.10.22] — 2026-10-06
@@ -715,5 +721,6 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.23...HEAD
+[v2.10.23]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.22...v2.10.23
 [v2.10.22]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.21...v2.10.22
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.22...HEAD
