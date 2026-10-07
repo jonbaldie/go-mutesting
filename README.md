@@ -313,7 +313,7 @@ Commit `go-mutesting-baseline.json` to your repo. The baseline uses stable mutan
 go-mutesting --logger-agentic-json --quiet ./...
 ```
 
-Use `--run-mutant-id` to re-run a single mutant by its stable ID (copy the `id` field from `go-mutesting-agentic.json`). Useful for iterating on a specific test gap without waiting for the full suite. A missing ID is reported as a tool error and exits with code 3; valid-ID runs suppress the summary and quality gates.
+Use `--run-mutant-id` to re-run a single mutant by its stable ID (copy the `id` field from `go-mutesting-agentic.json`). Other mutants are not classified or counted, and `--dry-run` counts only that mutant. Useful for iterating on a specific test gap without waiting for the full suite. A missing ID is reported as a tool error and exits with code 3; valid-ID runs suppress the summary and quality gates.
 
 ### <a name="progress"></a>Live progress
 
