@@ -10,6 +10,8 @@ go-mutesting [flags] <pkg|file|dir> ...
 
 Targets can be Go source files, directories, or import paths. The `...` wildcard searches recursively. Test files (`_test.go`) are excluded automatically.
 
+You can run go-mutesting from outside the targets' module, such as from a parent directory or from another module. It runs `go` in the targets' module, so the result matches a run from inside it. Targets that span more than one module, or are not in a module, are a tool error (exit 3); run go-mutesting once per module. This check is skipped when a `go.work` workspace is in use, and when a custom `--exec` runs the tests.
+
 ## Core flags
 
 | Flag | Default | Description |
@@ -88,7 +90,7 @@ If a generated mutant does not compile, it is skipped rather than counted as kil
 | Code | Meaning |
 | :--- | :------ |
 | 0 | All mutations tested; all quality gates passed |
-| 3 | Invalid input or tool failure, including a failed clean coverage run |
+| 3 | Invalid input or tool failure, including a failed clean coverage run, or targets that are not in one Go module |
 | 4 | A quality gate was not met (`--min-msi`, `--min-covered-msi`, or `--fail-on-escaped`) |
 
 ## Related project report
