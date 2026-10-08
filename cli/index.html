@@ -815,6 +815,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>go-mutesting [flags] &lt;pkg|file|dir&gt; ...
 </code></pre></div>
 <p>Targets can be Go source files, directories, or import paths. The <code>...</code> wildcard searches recursively. Test files (<code>_test.go</code>) are excluded automatically.</p>
+<p>You can run go-mutesting from outside the targets' module, such as from a parent directory or from another module. It runs <code>go</code> in the targets' module, so the result matches a run from inside it. Targets that span more than one module, or are not in a module, are a tool error (exit 3); run go-mutesting once per module. This check is skipped when a <code>go.work</code> workspace is in use, and when a custom <code>--exec</code> runs the tests.</p>
 <h2 id="core-flags">Core flags<a class="headerlink" href="#core-flags" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1037,7 +1038,7 @@
 </tr>
 <tr>
 <td style="text-align: left;">3</td>
-<td style="text-align: left;">Invalid input or tool failure, including a failed clean coverage run</td>
+<td style="text-align: left;">Invalid input or tool failure, including a failed clean coverage run, or targets that are not in one Go module</td>
 </tr>
 <tr>
 <td style="text-align: left;">4</td>
