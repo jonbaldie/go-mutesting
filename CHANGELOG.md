@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+### Changed
+- Local repair checks, pre-push, and PR CI use one changed-line self-mutation gate in `scripts/check-change.sh`, matching quality-gates/mutago#295. Master CI keeps full-tree mutation testing. MSI thresholds and mutant timeouts are unchanged.
+
 ## [v2.10.24] — 2026-10-08
 
 Replicates quality-gates/mutago v2.10.24.

@@ -63,7 +63,6 @@ fi
 
 TMP_DIR=$(mktemp -d)
 CHECKOUT_DIR="$TMP_DIR/checkout"
-GO_MUTESTING_BIN="$TMP_DIR/go-mutesting"
 cleanup() {
 	cd "$ROOT_DIR"
 	git worktree remove --force "$CHECKOUT_DIR" >/dev/null 2>&1 || true
@@ -75,41 +74,9 @@ echo "pre-push: checking pushed HEAD in an isolated worktree..."
 git worktree add --quiet --detach "$CHECKOUT_DIR" "$HEAD_SHA"
 cd "$CHECKOUT_DIR"
 
-echo "pre-push: building go-mutesting..."
-if ! go build -o "$GO_MUTESTING_BIN" ./cmd/go-mutesting; then
-	printf 'FAIL: go build ./cmd/go-mutesting failed\n' >&2
-	exit 1
-fi
-
 echo "pre-push: running mutation testing scoped to the diff against origin/master..."
-# Same package list, timeout, quality gates, and changed-line scope as the
-# pull-request mode in .github/workflows/mutation.yml and CLAUDE.md.
-# --ignore-msi-with-no-mutations avoids failing pushes that don't touch these
-# packages at all.
 STATUS=0
-"$GO_MUTESTING_BIN" \
-	--workers=1 \
-	--exec-timeout 30 \
-	--coverage \
-	--git-diff-lines \
-	--git-diff-base origin/master \
-	--ignore-msi-with-no-mutations \
-	--min-msi 75 \
-	--min-covered-msi 80 \
-	github.com/jonbaldie/go-mutesting/v2/mutator/arithmetic \
-	github.com/jonbaldie/go-mutesting/v2/mutator/branch \
-	github.com/jonbaldie/go-mutesting/v2/mutator/composite \
-	github.com/jonbaldie/go-mutesting/v2/mutator/concurrency \
-	github.com/jonbaldie/go-mutesting/v2/mutator/conditional \
-	github.com/jonbaldie/go-mutesting/v2/mutator/expression \
-	github.com/jonbaldie/go-mutesting/v2/mutator/loop \
-	github.com/jonbaldie/go-mutesting/v2/mutator/numbers \
-	github.com/jonbaldie/go-mutesting/v2/mutator/select \
-	github.com/jonbaldie/go-mutesting/v2/mutator/statement \
-	github.com/jonbaldie/go-mutesting/v2/internal/filter \
-	github.com/jonbaldie/go-mutesting/v2/internal/coverage \
-	github.com/jonbaldie/go-mutesting/v2/internal/gitdiff \
-	github.com/jonbaldie/go-mutesting/v2/internal/models || STATUS=$?
+GOMAXPROCS=1 GO_MUTESTING_WORKERS=1 ./scripts/check-change.sh || STATUS=$?
 
 if [ "$STATUS" -eq 4 ]; then
 	printf '\nFAIL: mutation quality gate not met (escaped mutants in the diff against origin/master).\n' >&2
