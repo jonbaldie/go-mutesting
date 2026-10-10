@@ -72,7 +72,7 @@ cd custom-go-mutesting
 mkdir -p custom/mypkg
 cd custom
 go mod init example.com/custom
-go get github.com/jonbaldie/go-mutesting/v2@v2.10.25
+go get github.com/jonbaldie/go-mutesting/v2@v2.10.26
 ```
 
 Save the registration example above as `mypkg/mypkg.go`. Then clone go-mutesting alongside your module and wire it in:

@@ -312,7 +312,7 @@ go-mutesting --update-baseline ./...
 go-mutesting --fail-on-escaped --baseline go-mutesting-baseline.json ./...
 ```
 
-Commit `go-mutesting-baseline.json` to your repo. The baseline uses stable mutant IDs — they survive refactors that shift line numbers without changing the actual code.
+Commit `go-mutesting-baseline.json` to your repo. The baseline uses stable mutant IDs — they survive refactors that shift line numbers without changing the actual code. When one mutator makes the same change to identical lines in one file, each mutant gets its own ID, numbered in source order, so accepting one does not accept the others.
 
 ### <a name="agentic-json"></a>LLM-ready report
 

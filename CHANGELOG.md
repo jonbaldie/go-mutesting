@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.27] — 2026-10-10
+
+Replicates quality-gates/mutago v2.10.27. The custom mutator guide from that release already shipped here in v2.10.26. This release catches the stable-ID fix from mutago v2.10.26, which this repo had not yet picked up.
+
+### Fixed
+- Mutants that make the same change to identical lines in one file now get distinct stable IDs. Before, they shared one ID, so a baseline that accepted one escape also hid new escapes at the other sites from `--fail-on-escaped`, and `--run-mutant-id` ran all of them. The engine now assigns each mutant its ID once, at discovery; the baseline, agentic `id`, GitLab `fingerprint`, and `--run-mutant-id` all use it. Existing baselines stay valid except for the second and later members of a same-text group: re-run `--update-baseline` to record those (quality-gates/mutago#274).
+- `statement/return` now lists the variables it keeps alive in source order. Before, a return that used several such variables could produce a different mutant text, checksum, and ID on each run.
+
 ## [v2.10.26] — 2026-10-10
 
 ### Fixed
@@ -738,7 +746,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.26...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.27...HEAD
+[v2.10.27]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.26...v2.10.27
 [v2.10.26]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.25...v2.10.26
 [v2.10.25]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.24...v2.10.25
 [v2.10.24]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.23...v2.10.24
