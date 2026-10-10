@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.26] — 2026-10-10
+
 ### Fixed
 - The custom mutator guide now builds from a full go-mutesting clone with an external module, explains the internal-package restriction, and uses an example that does not duplicate a built-in mutator (quality-gates/mutago#300).
 
@@ -736,7 +738,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.25...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.26...HEAD
+[v2.10.26]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.25...v2.10.26
 [v2.10.25]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.24...v2.10.25
 [v2.10.24]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.23...v2.10.24
 [v2.10.23]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.22...v2.10.23
