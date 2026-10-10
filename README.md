@@ -46,6 +46,13 @@ Full documentation: https://jonbaldie.github.io/go-mutesting/
 
 Forked from [avito-tech/go-mutesting](https://github.com/avito-tech/go-mutesting), itself a fork of [zimmski/go-mutesting](https://github.com/zimmski/go-mutesting).
 
+## Custom mutators
+
+Register your own operators with `mutator.Register`, then blank-import their
+package in a full go-mutesting clone and build a custom binary. Copying only
+`cmd/go-mutesting/main.go` into another module will not build because it uses internal
+packages. See the [custom mutator guide](docs/custom-mutators.md) for a walkthrough.
+
 ## Quick example
 
 The following command mutates the go-mutesting project with all available mutators.
