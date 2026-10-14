@@ -54,7 +54,7 @@ You can run go-mutesting from outside the targets' module, such as from a parent
 | Flag | Description |
 | :--- | :---------- |
 | `--coverage` | Run `go test -coverprofile` first; stop with exit 3 if it fails, otherwise skip test execution for uncovered lines and exclude them from covered-MSI |
-| `--per-test` | Build a per-test coverage map and run only the tests that cover each mutation. Best for packages with slow tests. Pairs well with `--coverage`. With `--test-recursive`, the map also covers subpackage tests. |
+| `--per-test` | Build a per-test coverage map and run only the tests that cover each mutation. Best for packages with slow tests. Pairs well with `--coverage`. With `--test-recursive`, the map also covers subpackage tests. If any test's coverage profile is missing or unreadable, go-mutesting runs the full suite instead. |
 | `--test-flags` | Extra flags passed to every `go test` call (e.g. `--test-flags=-short`). Use the `=` form for values starting with a dash. Adaptive timeout preserves a positive `-count=N`, adds `-count=1` when absent, and rejects `-count=0`. Ignored when `--exec` is set. |
 
 ## Vet

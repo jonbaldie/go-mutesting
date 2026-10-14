@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.28] — 2026-10-14
+
+Replicates quality-gates/mutago v2.10.28.
+
+### Fixed
+- `--per-test` no longer trusts a partial coverage map. If any test's coverage profile is missing, empty, or unreadable, go-mutesting drops the map and runs the full suite for every mutant, and `--verbose` names the test and profile. Before, that test looked like it covered nothing, so it could be left out of mutant runs and let mutants escape. A failing test that still writes a valid profile counts as before (quality-gates/mutago#306).
+
 ## [v2.10.27] — 2026-10-10
 
 Replicates quality-gates/mutago v2.10.27. The custom mutator guide from that release already shipped here in v2.10.26. This release catches the stable-ID fix from mutago v2.10.26, which this repo had not yet picked up.
@@ -746,7 +753,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.27...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.28...HEAD
+[v2.10.28]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.27...v2.10.28
 [v2.10.27]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.26...v2.10.27
 [v2.10.26]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.25...v2.10.26
 [v2.10.25]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.24...v2.10.25
