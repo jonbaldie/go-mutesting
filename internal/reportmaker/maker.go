@@ -385,10 +385,11 @@ type gitLabLines struct {
 // MakeGitLabReport writes go-mutesting-gitlab.json in GitLab Code Quality
 // format. Each escaped mutant becomes one issue entry. GitLab picks this up
 // automatically when the artifact path is configured in .gitlab-ci.yml.
-func MakeGitLabReport(report models.Report, moduleRoot string) error {
+// repoPath maps a source file to the repository-relative path GitLab expects.
+func MakeGitLabReport(report models.Report, repoPath func(file string) string) error {
 	issues := make([]gitLabIssue, 0, len(report.Escaped))
 	for _, m := range report.Escaped {
-		relFile := baseline.RelPath(m.Mutator.OriginalFilePath, moduleRoot)
+		relFile := repoPath(m.Mutator.OriginalFilePath)
 		desc := fmt.Sprintf("Escaped mutant (%s) at %s:%d — no test kills this mutation",
 			m.Mutator.MutatorName, relFile, m.Mutator.OriginalStartLine)
 		issues = append(issues, gitLabIssue{

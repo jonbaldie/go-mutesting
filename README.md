@@ -31,6 +31,7 @@ Beyond finding escaped mutants, go-mutesting can enforce quality gates in CI —
 | Quiet mode — suppress killed/skip noise | `--quiet` |
 | Suppress diff output | `--no-diffs` |
 | Dry-run mode — count mutations without running tests | `--dry-run` |
+| Generate-only mode — write mutant sources without running tests, reports, baseline update, or gates | `--no-exec` |
 | Baseline pre-flight check — fail fast if tests already broken | default (was `--noop`) |
 | Fail on any escape without a score threshold | `--fail-on-escaped` |
 | Run a single mutant by stable ID | `--run-mutant-id` |
@@ -359,7 +360,7 @@ jobs:
 
 `--logger-github` emits escaped mutants as `::warning` annotations that appear inline on the PR diff. `--coverage` excludes untested code from the covered-MSI denominator so you aren't penalised for dead code your tests never reach.
 
-For GitLab, replace `--logger-github` with `--logger-gitlab`. This writes `go-mutesting-gitlab.json` in GitLab Code Quality format, which GitLab CI picks up as a code quality report on merge requests.
+For GitLab, replace `--logger-github` with `--logger-gitlab`. This writes `go-mutesting-gitlab.json` in GitLab Code Quality format, which GitLab CI picks up as a code quality report on merge requests. Both loggers write paths relative to the repository root, so they also work when `go.mod` lives in a subdirectory.
 
 **Adopting gates on a legacy codebase**: record the current survivors first, then only fail on new regressions.
 

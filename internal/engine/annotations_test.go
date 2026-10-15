@@ -39,7 +39,7 @@ func TestPrintGitHubAnnotations_RepoRelativeForRelativeTargets(t *testing.T) {
 		m.Mutator.MutatorName = "statement/return"
 		m.Mutator.OriginalStartLine = 4
 		var out bytes.Buffer
-		printGitHubAnnotations(&out, &models.Report{Escaped: []models.Mutant{m}})
+		printGitHubAnnotations(&out, &models.Report{Escaped: []models.Mutant{m}}, resolveSourceRoots("."))
 		if !strings.Contains(out.String(), "file=mod/internal/store/store.go,line=4") {
 			t.Errorf("target %q: annotation not repo-relative:\n%s", target, out.String())
 		}

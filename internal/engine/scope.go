@@ -16,7 +16,8 @@ const (
 
 // scopeCandidate is one discovered mutant, identified before a job is queued.
 type scopeCandidate struct {
-	relFile  string
+	// repoFile is the repository-relative path, the key git diff reports.
+	repoFile string
 	absFile  string
 	line     int
 	checksum string
@@ -46,7 +47,7 @@ func newMutantScope(gitLines gitdiff.ChangedLines, runID string, blocked map[str
 // The check order is git diff, --run-mutant-id, blacklist, then duplicate.
 // A rejected mutant is not recorded as seen, so it cannot hide a later mutant.
 func (s *mutantScope) Admit(c scopeCandidate) (bool, skipReason) {
-	if gitDiffExcludes(s.gitLines, c.relFile, c.absFile, c.line) {
+	if gitDiffExcludes(s.gitLines, c.repoFile, c.absFile, c.line) {
 		return false, skipGitDiff
 	}
 	if s.runID != "" && c.id != s.runID {
@@ -63,14 +64,14 @@ func (s *mutantScope) Admit(c scopeCandidate) (bool, skipReason) {
 }
 
 // gitDiffExcludes is the only git-diff scope rule.
-// A nil line set means the filter is off. An empty relFile falls back to absFile.
+// A nil line set means the filter is off. An empty repoFile falls back to absFile.
 // Line 0 is not excluded: the position is unknown, so the mutant stays in scope.
-func gitDiffExcludes(lines gitdiff.ChangedLines, relFile, absFile string, line int) bool {
+func gitDiffExcludes(lines gitdiff.ChangedLines, repoFile, absFile string, line int) bool {
 	if lines == nil {
 		return false
 	}
-	changed := gitdiff.IsRelativeLineChanged(lines, relFile, line)
-	if relFile == "" {
+	changed := gitdiff.IsRelativeLineChanged(lines, repoFile, line)
+	if repoFile == "" {
 		changed = gitdiff.IsLineChanged(lines, absFile, line)
 	}
 	return !changed
