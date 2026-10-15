@@ -24,19 +24,19 @@ func TestMutantScopeAdmit(t *testing.T) {
 		{
 			name:  "nil git lines admit every line",
 			scope: newMutantScope(nil, "", nil),
-			c:     scopeCandidate{relFile: "foo.go", absFile: "/repo/foo.go", line: 10, checksum: "a"},
+			c:     scopeCandidate{repoFile: "foo.go", absFile: "/repo/foo.go", line: 10, checksum: "a"},
 			want:  true,
 		},
 		{
 			name:  "changed line is in scope",
 			scope: newMutantScope(lines, "", nil),
-			c:     scopeCandidate{relFile: "pkg/foo.go", absFile: "/repo/pkg/foo.go", line: 12, checksum: "a"},
+			c:     scopeCandidate{repoFile: "pkg/foo.go", absFile: "/repo/pkg/foo.go", line: 12, checksum: "a"},
 			want:  true,
 		},
 		{
 			name:   "unchanged line is out of scope",
 			scope:  newMutantScope(lines, "", nil),
-			c:      scopeCandidate{relFile: "pkg/foo.go", absFile: "/repo/pkg/foo.go", line: 20, checksum: "a"},
+			c:      scopeCandidate{repoFile: "pkg/foo.go", absFile: "/repo/pkg/foo.go", line: 20, checksum: "a"},
 			reason: skipGitDiff,
 		},
 		{
@@ -54,31 +54,31 @@ func TestMutantScopeAdmit(t *testing.T) {
 		{
 			name:  "unknown line stays in scope",
 			scope: newMutantScope(lines, "", nil),
-			c:     scopeCandidate{relFile: "pkg/foo.go", absFile: "/repo/pkg/foo.go", line: 0, checksum: "a"},
+			c:     scopeCandidate{repoFile: "pkg/foo.go", absFile: "/repo/pkg/foo.go", line: 0, checksum: "a"},
 			want:  true,
 		},
 		{
 			name:  "matching mutant id is in scope",
 			scope: newMutantScope(nil, "wanted", nil),
-			c:     scopeCandidate{relFile: "foo.go", line: 1, checksum: "a", id: "wanted"},
+			c:     scopeCandidate{repoFile: "foo.go", line: 1, checksum: "a", id: "wanted"},
 			want:  true,
 		},
 		{
 			name:   "other mutant id is out of scope",
 			scope:  newMutantScope(nil, "wanted", nil),
-			c:      scopeCandidate{relFile: "foo.go", line: 1, checksum: "a", id: "other"},
+			c:      scopeCandidate{repoFile: "foo.go", line: 1, checksum: "a", id: "other"},
 			reason: skipMutantID,
 		},
 		{
 			name:  "empty run id does not filter on id",
 			scope: newMutantScope(nil, "", nil),
-			c:     scopeCandidate{relFile: "foo.go", line: 1, checksum: "a", id: "other"},
+			c:     scopeCandidate{repoFile: "foo.go", line: 1, checksum: "a", id: "other"},
 			want:  true,
 		},
 		{
 			name:   "blacklisted checksum is out of scope",
 			scope:  newMutantScope(nil, "", map[string]struct{}{"blocked": {}}),
-			c:      scopeCandidate{relFile: "foo.go", line: 1, checksum: "blocked", id: "wanted"},
+			c:      scopeCandidate{repoFile: "foo.go", line: 1, checksum: "blocked", id: "wanted"},
 			reason: skipBlacklist,
 		},
 	}
@@ -98,22 +98,22 @@ func TestMutantScopeAdmitDuplicateAndOrder(t *testing.T) {
 		"foo.go": {{Start: 2, End: 2}},
 	}, "wanted", map[string]struct{}{"blocked": {}})
 
-	if ok, reason := scope.Admit(scopeCandidate{relFile: "foo.go", line: 9, checksum: "same", id: "wanted"}); ok || reason != skipGitDiff {
+	if ok, reason := scope.Admit(scopeCandidate{repoFile: "foo.go", line: 9, checksum: "same", id: "wanted"}); ok || reason != skipGitDiff {
 		t.Fatalf("out-of-diff mutant admitted or wrong reason: %v %v", ok, reason)
 	}
-	if ok, reason := scope.Admit(scopeCandidate{relFile: "foo.go", line: 2, checksum: "same", id: "other"}); ok || reason != skipMutantID {
+	if ok, reason := scope.Admit(scopeCandidate{repoFile: "foo.go", line: 2, checksum: "same", id: "other"}); ok || reason != skipMutantID {
 		t.Fatalf("id miss should not be recorded as a duplicate: %v %v", ok, reason)
 	}
-	if ok, reason := scope.Admit(scopeCandidate{relFile: "foo.go", line: 2, checksum: "same", id: "wanted"}); !ok || reason != admitReason {
+	if ok, reason := scope.Admit(scopeCandidate{repoFile: "foo.go", line: 2, checksum: "same", id: "wanted"}); !ok || reason != admitReason {
 		t.Fatalf("matching mutant should be admitted after earlier rejections: %v %v", ok, reason)
 	}
-	if ok, reason := scope.Admit(scopeCandidate{relFile: "foo.go", line: 2, checksum: "same", id: "wanted"}); ok || reason != skipDuplicate {
+	if ok, reason := scope.Admit(scopeCandidate{repoFile: "foo.go", line: 2, checksum: "same", id: "wanted"}); ok || reason != skipDuplicate {
 		t.Fatalf("second identical edit = (%v, %v), want duplicate", ok, reason)
 	}
-	if ok, reason := scope.Admit(scopeCandidate{relFile: "foo.go", line: 2, checksum: "blocked", id: "wanted"}); ok || reason != skipBlacklist {
+	if ok, reason := scope.Admit(scopeCandidate{repoFile: "foo.go", line: 2, checksum: "blocked", id: "wanted"}); ok || reason != skipBlacklist {
 		t.Fatalf("blacklist = (%v, %v), want blacklist", ok, reason)
 	}
-	if ok, _ := scope.Admit(scopeCandidate{relFile: "foo.go", line: 2, checksum: "other", id: "wanted"}); !ok {
+	if ok, _ := scope.Admit(scopeCandidate{repoFile: "foo.go", line: 2, checksum: "other", id: "wanted"}); !ok {
 		t.Fatal("a different checksum should still be admitted")
 	}
 }

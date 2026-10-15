@@ -92,6 +92,8 @@ type execConfig struct {
 	importPaths    *importPaths
 	// goDir is the directory go commands run in (see goWorkDir).
 	goDir string
+	// mode is what the run does with each admitted mutant.
+	mode runMode
 }
 
 type mutationRun struct {
@@ -99,13 +101,13 @@ type mutationRun struct {
 	opts             *models.Options
 	mutators         []mutatorItem
 	scope            *mutantScope
+	sink             mutantSink
 	tmpDir           string
 	exec             execConfig
 	report           *models.Report
 	mu               *sync.Mutex
 	modulePath       string
-	moduleRoot       string
-	jobs             chan<- execJob
+	roots            sourceRoots
 	stdout           io.Writer
 	stderr           io.Writer
 	runMutantIDFound *atomic.Bool
@@ -209,7 +211,7 @@ func (e *Engine) RunResolved(ctx context.Context, opts *models.Options, bl *base
 		return Result{Report: report, ExitCode: returnError}, err
 	}
 
-	dryRunTotal, dryRunMutatorTotals, loopCode := mutateAll(run, pkgs, coverageProfiles)
+	loopCode := mutateAll(run, pkgs, coverageProfiles)
 
 	cleanup()
 
@@ -220,20 +222,12 @@ func (e *Engine) RunResolved(ctx context.Context, opts *models.Options, bl *base
 		return Result{Report: report, ExitCode: returnError}, err
 	}
 
-	if opts.General.DryRun {
-		report.Stats.TotalMutantsCount = int64(dryRunTotal)
-		printDryRunReport(run.stdout, dryRunTotal, dryRunMutatorTotals)
-		return Result{Report: report, ExitCode: returnOk}, nil
-	}
-
-	report.Calculate()
-	exitCode := finalizeResults(runEngine.Stdout, runEngine.Stderr, opts, report, bl, run.moduleRoot, run.runMutantIDFound.Load())
-	return Result{Report: report, ExitCode: exitCode}, nil
+	return Result{Report: report, ExitCode: run.sink.finish(run, bl)}, nil
 }
 
 func newRunCleanup(setup *runSetup) func() {
 	opts := setup.run.opts
-	if opts.General.DryRun {
+	if !setup.run.exec.mode.materializes() {
 		return func() {}
 	}
 	var cleanedUp bool
@@ -266,13 +260,14 @@ type runSetup struct {
 }
 
 func (e *Engine) validateAndInitRun(ctx context.Context, opts *models.Options, targets importing.ResolvedTargets) (*runSetup, error) {
-	if err := validateAdaptiveTimeoutTestCount(opts); err != nil {
+	mode := resolveRunMode(opts)
+	if err := validateAdaptiveTimeoutTestCount(opts, mode); err != nil {
 		return nil, err
 	}
-	return e.initRun(ctx, opts, targets)
+	return e.initRun(ctx, opts, mode, targets)
 }
 
-func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets importing.ResolvedTargets) (*runSetup, error) {
+func (e *Engine) initRun(ctx context.Context, opts *models.Options, mode runMode, targets importing.ResolvedTargets) (*runSetup, error) {
 	files := targets.Files
 	if len(files) == 0 {
 		return nil, fmt.Errorf("Could not find any suitable Go source files")
@@ -289,7 +284,7 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 	}
 
 	execs, extraTestFlags := parseExecFlags(opts)
-	goDir, err := loadTargetPackages(opts, execs, files)
+	goDir, err := loadTargetPackages(opts, mode, execs, files)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +299,7 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 	numWorkers := calcNumWorkers(opts, execs)
 	console.Verbose(opts, "Running with %d parallel worker(s)", numWorkers)
 
-	tmpDir, err := createTmpDir(opts)
+	tmpDir, err := createTmpDir(opts, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -312,13 +307,13 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 	var jobs chan execJob
 	var jobWg *sync.WaitGroup
 	runMutantIDFound := &atomic.Bool{}
-	if !opts.General.DryRun && !opts.Exec.NoExec {
+	if mode.executes() {
 		jobs, jobWg = startWorkerPool(opts, numWorkers, report, &reportMu, tmpDir)
 	}
 
 	var stopProgress chan struct{}
 	var progressWg *sync.WaitGroup
-	if progressMonitorEnabled(opts) {
+	if progressMonitorEnabled(opts, mode) {
 		stopProgress, progressWg = startProgressMonitor(opts, report, &reportMu, e.Stderr)
 	}
 
@@ -334,16 +329,17 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 			extraTestFlags: extraTestFlags,
 			importPaths:    newImportPaths(goDir, extraTestFlags),
 			goDir:          goDir,
+			mode:           mode,
 		},
 		report:           report,
 		mu:               &reportMu,
 		modulePath:       detectModulePath(goDir),
-		moduleRoot:       detectModuleRoot(goDir),
-		jobs:             jobs,
+		roots:            resolveSourceRoots(goDir),
 		stdout:           e.Stdout,
 		stderr:           e.Stderr,
 		runMutantIDFound: runMutantIDFound,
 	}
+	run.sink = newMutantSink(run, jobs)
 
 	return &runSetup{
 		run:          run,
@@ -355,8 +351,8 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, targets impo
 	}, nil
 }
 
-func createTmpDir(opts *models.Options) (string, error) {
-	if opts.General.DryRun {
+func createTmpDir(opts *models.Options, mode runMode) (string, error) {
+	if !mode.materializes() {
 		return "", nil
 	}
 	tmpDir, err := os.MkdirTemp("", "go-mutesting-")
@@ -436,8 +432,8 @@ func detectDefaultBranch() string {
 
 // loadTargetPackages resolves the directory the run's go commands start in and
 // loads the target packages from it.
-func loadTargetPackages(opts *models.Options, execs []string, files []string) (string, error) {
-	goDir, err := resolveGoDir(opts, execs, files)
+func loadTargetPackages(opts *models.Options, mode runMode, execs []string, files []string) (string, error) {
+	goDir, err := resolveGoDir(opts, mode, execs, files)
 	if err != nil {
 		return "", err
 	}
@@ -451,12 +447,12 @@ func loadTargetPackages(opts *models.Options, execs []string, files []string) (s
 
 // resolveGoDir returns the directory the run's go commands start in. A target
 // outside any single module is an error only when go-mutesting itself runs go test.
-func resolveGoDir(opts *models.Options, execs []string, files []string) (string, error) {
+func resolveGoDir(opts *models.Options, mode runMode, execs []string, files []string) (string, error) {
 	goDir, err := goWorkDir(currentGoEnv(), files)
 	if err == nil {
 		return goDir, nil
 	}
-	if runsGoTest(opts, execs) {
+	if runsGoTest(opts, mode, execs) {
 		return "", fmt.Errorf("Cannot resolve the module of the targets: %w", err)
 	}
 	return "", nil
@@ -482,21 +478,10 @@ func detectModuleRoot(goDir string) string {
 	return filepath.Dir(gomod)
 }
 
-func sumDryRunTotals(totals map[string]int) int {
-	var total int
-	for _, count := range totals {
-		total += count
-	}
-	return total
-}
-
-func mutateAll(r *mutationRun, pkgs []importing.Package, coverageProfiles []*coverage.Profile) (dryRunTotal int, dryRunMutatorTotals map[string]int, exitCode int) {
-	if r.opts.General.DryRun {
-		dryRunMutatorTotals = make(map[string]int)
-	}
+func mutateAll(r *mutationRun, pkgs []importing.Package, coverageProfiles []*coverage.Profile) int {
 	for i, importPkg := range pkgs {
 		if r.ctx.Err() != nil {
-			return 0, dryRunMutatorTotals, returnError
+			return returnError
 		}
 		var coverProfile *coverage.Profile
 		if coverageProfiles != nil {
@@ -506,18 +491,18 @@ func mutateAll(r *mutationRun, pkgs []importing.Package, coverageProfiles []*cov
 		testPkg := r.exec.importPaths.forFiles(importPkg.Files)
 		for _, file := range importPkg.Files {
 			if r.ctx.Err() != nil {
-				return 0, dryRunMutatorTotals, returnError
+				return returnError
 			}
-			if _, code := processFile(r, file, testPkg, coverProfile, perTestProf, dryRunMutatorTotals); code != 0 {
-				return 0, dryRunMutatorTotals, code
+			if _, code := processFile(r, file, testPkg, coverProfile, perTestProf); code != 0 {
+				return code
 			}
 		}
 	}
-	return sumDryRunTotals(dryRunMutatorTotals), dryRunMutatorTotals, 0
+	return 0
 }
 
 func configureAdaptiveTimeoutAndCoverage(opts *models.Options, pkgs []importing.Package, run *mutationRun) ([]*coverage.Profile, error) {
-	if opts.Exec.Coverage && !opts.Exec.NoExec && !opts.General.DryRun {
+	if opts.Exec.Coverage && run.exec.mode.executes() {
 		profiles, maxBaseline, err := prepareCoverageProfiles(opts, pkgs, run.exec, run.tmpDir, run.modulePath, run.report)
 		if err != nil {
 			return nil, err
@@ -550,13 +535,13 @@ func prepareCoverageProfiles(opts *models.Options, pkgs []importing.Package, ec 
 }
 
 func perTestForPackage(r *mutationRun, importPkg importing.Package) *coverage.PerTestProfile {
-	if !r.opts.Exec.PerTest || r.opts.Exec.NoExec || r.opts.General.DryRun || len(r.exec.execs) != 0 {
+	if !r.opts.Exec.PerTest || !r.exec.mode.executes() || len(r.exec.execs) != 0 {
 		return nil
 	}
 	return buildPerTestCoverageProfile(r.stdout, r.opts, r.exec.importPaths.forFiles(importPkg.Files), r.modulePath, r.tmpDir, r.exec)
 }
 
-func processFile(r *mutationRun, file string, testPkg string, coverProfile *coverage.Profile, perTestProf *coverage.PerTestProfile, dryRunMutatorTotals map[string]int) (int, int) {
+func processFile(r *mutationRun, file string, testPkg string, coverProfile *coverage.Profile, perTestProf *coverage.PerTestProfile) (int, int) {
 	console.Verbose(r.opts, "Mutate %q", file)
 
 	annotationProcessor := annotation.NewProcessor()
@@ -576,7 +561,7 @@ func processFile(r *mutationRun, file string, testPkg string, coverProfile *cove
 	if err != nil {
 		return 0, returnError
 	}
-	if !r.opts.General.DryRun {
+	if r.exec.mode.materializes() {
 		r.mu.Lock()
 		if r.report.Sources == nil {
 			r.report.Sources = make(map[string]string)
@@ -585,7 +570,7 @@ func processFile(r *mutationRun, file string, testPkg string, coverProfile *cove
 		r.mu.Unlock()
 	}
 
-	if !r.opts.General.DryRun {
+	if r.exec.mode.materializes() {
 		if err := os.MkdirAll(r.tmpDir+"/"+filepath.Dir(file), 0755); err != nil {
 			return 0, returnError
 		}
@@ -615,14 +600,14 @@ func processFile(r *mutationRun, file string, testPkg string, coverProfile *cove
 		originalSource: originalSource,
 	}
 
-	return mutateFile(r, fc, dryRunMutatorTotals)
+	return mutateFile(r, fc)
 }
 
-func mutateFile(r *mutationRun, fc *fileContext, dryRunMutatorTotals map[string]int) (int, int) {
+func mutateFile(r *mutationRun, fc *fileContext) (int, int) {
 	mutationID := 0
 
 	if r.opts.Filter.Match == "" {
-		mutationID = mutate(r, fc, fc.src, mutationID, dryRunMutatorTotals)
+		mutationID = mutate(r, fc, fc.src, mutationID)
 		return mutationID, 0
 	}
 
@@ -632,30 +617,21 @@ func mutateFile(r *mutationRun, fc *fileContext, dryRunMutatorTotals map[string]
 	}
 	for _, f := range astutil.Functions(fc.src) {
 		if m.MatchString(f.Name.Name) {
-			mutationID = mutate(r, fc, f, mutationID, dryRunMutatorTotals)
+			mutationID = mutate(r, fc, f, mutationID)
 		}
 	}
 	return mutationID, 0
 }
 
-func mutate(r *mutationRun, fc *fileContext, node ast.Node, mutationID int, dryRunGlobalTotals map[string]int) int {
-	originalSourceCode := fc.originalSource
-
-	var dryRunCounts map[string]int
-	if r.opts.General.DryRun {
-		dryRunCounts = make(map[string]int)
-	}
-
+func mutate(r *mutationRun, fc *fileContext, node ast.Node, mutationID int) int {
 	for _, m := range r.mutators {
-		mutationID = applyMutator(r, m, fc, node, mutationID, originalSourceCode, dryRunCounts, dryRunGlobalTotals)
+		mutationID = applyMutator(r, m, fc, node, mutationID)
 	}
-
-	printDryRunFileSummary(r.opts, r.stdout, fc.sourceFile, dryRunCounts)
-
+	r.sink.flush(fc)
 	return mutationID
 }
 
-func applyMutator(r *mutationRun, m mutatorItem, fc *fileContext, node ast.Node, mutationID int, originalSourceCode []byte, dryRunCounts, dryRunGlobalTotals map[string]int) int {
+func applyMutator(r *mutationRun, m mutatorItem, fc *fileContext, node ast.Node, mutationID int) int {
 	console.Debug(r.opts, "Mutator %s", m.Name)
 
 	prepareMutantIdentities(r, fc, m)
@@ -672,7 +648,7 @@ func applyMutator(r *mutationRun, m mutatorItem, fc *fileContext, node ast.Node,
 		}
 
 		originalStartLine := int64(fc.fset.Position(mutation.Position).Line)
-		recordOneMutation(r, m, fc, mutation, mutationID, originalStartLine, originalSourceCode, dryRunCounts, dryRunGlobalTotals)
+		recordOneMutation(r, m, fc, mutation, mutationID, originalStartLine)
 
 		changed <- mutesting.PositionedMutation{}
 		<-changed
@@ -690,8 +666,8 @@ type preparedMutation struct {
 	relFile   string
 }
 
-func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, originalStartLine int64, originalSourceCode []byte, dryRunCounts, dryRunGlobalTotals map[string]int) {
-	prepared, ok := prepareScopedMutation(r, m, fc, mutation, originalStartLine, originalSourceCode)
+func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, originalStartLine int64) {
+	prepared, ok := prepareScopedMutation(r, m, fc, mutation, originalStartLine, fc.originalSource)
 	if !ok {
 		return
 	}
@@ -703,14 +679,7 @@ func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation 
 	if r.opts.Exec.RunMutantID != "" && r.runMutantIDFound != nil {
 		r.runMutantIDFound.Store(true)
 	}
-	if r.opts.General.DryRun {
-		countDryRunMutation(m.Name, dryRunCounts, dryRunGlobalTotals)
-		return
-	}
-	if r.jobs == nil {
-		return
-	}
-	queueMutation(r, fc, mutation, mutationID, originalSourceCode, prepared)
+	r.sink.admit(fc, mutation, mutationID, prepared)
 }
 
 func prepareScopedMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, originalStartLine int64, originalSourceCode []byte) (preparedMutation, bool) {
@@ -724,7 +693,7 @@ func prepareScopedMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutat
 		recordCaptureFailure(r, mutant, err)
 		return preparedMutation{}, false
 	}
-	relFile := baseline.RelPath(fc.absFile, r.moduleRoot)
+	relFile := r.roots.ModulePath(fc.absFile)
 	checksum := stableMutationEditKey(relFile, originalSourceCode, edit)
 	mutant.Checksum = checksum
 	id, err := discoveredMutantID(r, fc, m, edit)
@@ -735,7 +704,7 @@ func prepareScopedMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutat
 	mutant.ID = id
 	return preparedMutation{
 		candidate: scopeCandidate{
-			relFile:  relFile,
+			repoFile: r.roots.RepoPath(fc.absFile),
 			absFile:  fc.absFile,
 			line:     int(originalStartLine),
 			checksum: checksum,
@@ -749,15 +718,15 @@ func prepareScopedMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutat
 
 // needsMutantIDs reports whether discovery must assign stable IDs.
 // A dry run needs them only to select --run-mutant-id.
-func needsMutantIDs(opts *models.Options) bool {
-	return !opts.General.DryRun || opts.Exec.RunMutantID != ""
+func needsMutantIDs(r *mutationRun) bool {
+	return r.exec.mode.materializes() || r.opts.Exec.RunMutantID != ""
 }
 
 // prepareMutantIdentities assigns IDs to every edit of mutator m in the file.
 // It must run before the filtered walk starts, because a walk changes the AST
 // in place while each mutation is pending.
 func prepareMutantIdentities(r *mutationRun, fc *fileContext, m mutatorItem) {
-	if !needsMutantIDs(r.opts) {
+	if !needsMutantIDs(r) {
 		return
 	}
 	if _, done := fc.identities[m.Name]; done {
@@ -766,13 +735,13 @@ func prepareMutantIdentities(r *mutationRun, fc *fileContext, m mutatorItem) {
 	if fc.identities == nil {
 		fc.identities = make(map[string]map[string]string)
 	}
-	relFile := baseline.RelPath(fc.absFile, r.moduleRoot)
+	relFile := r.roots.ModulePath(fc.absFile)
 	fc.identities[m.Name] = mutantIdentities(fc.pkg, fc.info, fc.fset, fc.src, fc.originalSource, relFile, m.Name, m.Mutator)
 }
 
 // discoveredMutantID returns the stable ID that prepareMutantIdentities gave edit.
 func discoveredMutantID(r *mutationRun, fc *fileContext, m mutatorItem, edit mutationEdit) (string, error) {
-	if !needsMutantIDs(r.opts) {
+	if !needsMutantIDs(r) {
 		return "", nil
 	}
 	if id, ok := fc.identities[m.Name][edit.key()]; ok {
@@ -782,7 +751,7 @@ func discoveredMutantID(r *mutationRun, fc *fileContext, m mutatorItem, edit mut
 }
 
 func recordCaptureFailure(r *mutationRun, mutant models.Mutant, err error) {
-	if r.opts.General.DryRun {
+	if !r.exec.mode.materializes() {
 		return
 	}
 	out := fmt.Sprintf("INTERNAL ERROR %s\n", err.Error())
@@ -797,11 +766,11 @@ func recordCaptureFailure(r *mutationRun, mutant models.Mutant, err error) {
 func noteRejectedMutation(r *mutationRun, c scopeCandidate, reason skipReason) {
 	switch reason {
 	case skipGitDiff:
-		console.Debug(r.opts, "Skip %s:%d (not in git diff)", c.relFile, c.line)
+		console.Debug(r.opts, "Skip %s:%d (not in git diff)", c.repoFile, c.line)
 	case skipMutantID:
-		console.Debug(r.opts, "Skip %s:%d (mutant id not selected)", c.relFile, c.line)
+		console.Debug(r.opts, "Skip %s:%d (mutant id not selected)", c.repoFile, c.line)
 	case skipBlacklist, skipDuplicate:
-		if r.opts.General.DryRun {
+		if !r.exec.mode.materializes() {
 			return
 		}
 		r.mu.Lock()
@@ -810,7 +779,7 @@ func noteRejectedMutation(r *mutationRun, c scopeCandidate, reason skipReason) {
 	}
 }
 
-func queueMutation(r *mutationRun, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, originalSourceCode []byte, prepared preparedMutation) {
+func queueMutation(r *mutationRun, jobs chan<- execJob, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, originalSourceCode []byte, prepared preparedMutation) {
 	adjPos := fc.fset.PositionFor(mutation.Position, true)
 	rawPos := fc.fset.PositionFor(mutation.Position, false)
 	job := execJob{
@@ -827,44 +796,27 @@ func queueMutation(r *mutationRun, fc *fileContext, mutation mutesting.Positione
 		out:            jobOutput{stdout: r.stdout, stderr: r.stderr},
 		source: mutationSource{
 			originalFile: fc.sourceFile,
-			mutationFile: fmt.Sprintf("%s.%d", fc.mutatedFile, mutationID),
+			mutationFile: mutationFilePath(fc, mutationID),
 			absFile:      fc.absFile,
 			relFile:      prepared.relFile,
-			moduleRoot:   r.moduleRoot,
+			moduleRoot:   r.roots.module,
 			original:     originalSourceCode,
 			edit:         prepared.edit,
 		},
 		packageLevelDecl: isPackageLevelDecl(fc.src, mutation.Position),
 		directiveShifted: adjPos.Filename != rawPos.Filename || adjPos.Line != rawPos.Line,
-		adjRelFile:       baseline.RelPath(filepath.Join(r.moduleRoot, adjPos.Filename), r.moduleRoot),
+		adjRelFile:       r.roots.ModulePath(filepath.Join(r.roots.module, adjPos.Filename)),
 	}
 	select {
 	case <-r.ctx.Done():
 		return
-	case r.jobs <- job:
+	case jobs <- job:
 	}
 }
 
-func countDryRunMutation(name string, dryRunCounts, dryRunGlobalTotals map[string]int) {
-	dryRunCounts[name]++
-	if dryRunGlobalTotals != nil {
-		dryRunGlobalTotals[name]++
-	}
-}
-
-func printDryRunFileSummary(opts *models.Options, stdout io.Writer, originalFile string, counts map[string]int) {
-	if !opts.General.DryRun || len(counts) == 0 {
-		return
-	}
-	fmt.Fprintf(stdout, "%s:\n", originalFile)
-	var keys []string
-	for k := range counts {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		fmt.Fprintf(stdout, "\t%s: %d\n", k, counts[k])
-	}
+// mutationFilePath is where mutant mutationID of fc's file is written.
+func mutationFilePath(fc *fileContext, mutationID int) string {
+	return fmt.Sprintf("%s.%d", fc.mutatedFile, mutationID)
 }
 
 func printDryRunReport(stdout io.Writer, total int, totals map[string]int) {
@@ -907,18 +859,18 @@ func parseExecFlags(opts *models.Options) (execs []string, extraTestFlags []stri
 // no-op retained for backward compatibility, since the check is always on.
 // When --timeout-coefficient is set, the check uses a generous timeout, measures
 // the clean run, and sets the per-mutation timeout from that measurement.
-func skipBaselineChecks(opts *models.Options, execs []string) bool {
-	return opts.Exec.Coverage || opts.Exec.NoExec || opts.General.DryRun || len(execs) > 0
+func skipBaselineChecks(opts *models.Options, mode runMode, execs []string) bool {
+	return opts.Exec.Coverage || !mode.executes() || len(execs) > 0
 }
 
 // runsGoTest reports whether the run builds and tests the targets with
 // `go test`: for the built-in runner, or for the --coverage profile.
-func runsGoTest(opts *models.Options, execs []string) bool {
-	return !opts.Exec.NoExec && !opts.General.DryRun && (len(execs) == 0 || opts.Exec.Coverage)
+func runsGoTest(opts *models.Options, mode runMode, execs []string) bool {
+	return mode.executes() && (len(execs) == 0 || opts.Exec.Coverage)
 }
 
 func runBaselineChecks(stderr io.Writer, opts *models.Options, pkgs []importing.Package, ec execConfig) int {
-	if skipBaselineChecks(opts, ec.execs) {
+	if skipBaselineChecks(opts, ec.mode, ec.execs) {
 		return 0 // returnOk
 	}
 	timeout := opts.Exec.Timeout
@@ -976,7 +928,7 @@ func applyAdaptiveTimeoutFromBaseline(opts *models.Options, baseline time.Durati
 }
 
 func buildCoverageProfile(opts *models.Options, pkgPath string, goDir string, tmpDir string, modulePath string, extraTestFlags []string) (*coverage.Profile, time.Duration, error) {
-	if opts.Exec.NoExec || !opts.Exec.Coverage {
+	if !opts.Exec.Coverage {
 		return nil, 0, nil
 	}
 	if pkgPath == "" {
@@ -1014,8 +966,8 @@ func buildCoverageProfile(opts *models.Options, pkgPath string, goDir string, tm
 	return prof, elapsed, nil
 }
 
-func validateAdaptiveTimeoutTestCount(opts *models.Options) error {
-	if opts.Exec.TimeoutCoefficient <= 0 || opts.Exec.NoExec || opts.General.DryRun || strings.TrimSpace(opts.Exec.Exec) != "" {
+func validateAdaptiveTimeoutTestCount(opts *models.Options, mode runMode) error {
+	if opts.Exec.TimeoutCoefficient <= 0 || !mode.executes() || strings.TrimSpace(opts.Exec.Exec) != "" {
 		return nil
 	}
 	testFlags := strings.Fields(opts.Exec.TestFlags)
@@ -1088,9 +1040,6 @@ func calcNumWorkers(opts *models.Options, execs []string) int {
 }
 
 func startWorkerPool(opts *models.Options, numWorkers int, report *models.Report, mu *sync.Mutex, tmpDir string) (chan execJob, *sync.WaitGroup) {
-	if opts.Exec.NoExec || opts.General.DryRun {
-		return nil, nil
-	}
 	stableExec := prepareStableExec(tmpDir)
 	jobs := make(chan execJob, numWorkers*2)
 	var wg sync.WaitGroup
@@ -1189,9 +1138,9 @@ func writeStableExecWrapper(dir string) (string, error) {
 	return path, nil
 }
 
-func progressMonitorEnabled(opts *models.Options) bool {
+func progressMonitorEnabled(opts *models.Options, mode runMode) bool {
 	return isTerminal() && !opts.General.Verbose && !opts.General.Debug &&
-		!opts.Config.SilentMode && !opts.Exec.NoExec && !opts.General.DryRun
+		!opts.Config.SilentMode && mode.executes()
 }
 
 func isTerminal() bool {
@@ -1243,19 +1192,18 @@ func shutdownAndCleanup(stderr io.Writer, opts *models.Options, jobs chan execJo
 	console.Debug(opts, "Remove %q", tmpDir)
 }
 
-func finalizeResults(stdout, stderr io.Writer, opts *models.Options, report *models.Report, bl *baseline.File, moduleRoot string, runMutantIDFound bool) int {
-	if opts.Exec.RunMutantID != "" && !runMutantIDFound {
-		fmt.Fprintf(stderr, "No mutant with ID %q was found\n", opts.Exec.RunMutantID)
-		return returnError
-	}
-
-	if handled, code := handleBaselineUpdate(stdout, stderr, opts, report, moduleRoot); handled {
+func finalizeResults(stdout, stderr io.Writer, opts *models.Options, report *models.Report, bl *baseline.File, roots sourceRoots, runMutantIDFound bool) int {
+	if code := checkRunMutantIDFound(stderr, opts, runMutantIDFound); code != returnOk {
 		return code
 	}
 
-	printResultsIfNeeded(stdout, opts, report)
+	if handled, code := handleBaselineUpdate(stdout, stderr, opts, report, roots.module); handled {
+		return code
+	}
 
-	if code := writeAllReports(stderr, opts, report, moduleRoot); code != returnOk {
+	printResultsIfNeeded(stdout, opts, report, roots)
+
+	if code := writeAllReports(stderr, opts, report, roots); code != returnOk {
 		return code
 	}
 
@@ -1263,6 +1211,14 @@ func finalizeResults(stdout, stderr io.Writer, opts *models.Options, report *mod
 		return returnOk
 	}
 	return checkQualityGates(stderr, opts, report, bl)
+}
+
+func checkRunMutantIDFound(stderr io.Writer, opts *models.Options, found bool) int {
+	if opts.Exec.RunMutantID != "" && !found {
+		fmt.Fprintf(stderr, "No mutant with ID %q was found\n", opts.Exec.RunMutantID)
+		return returnError
+	}
+	return returnOk
 }
 
 func handleBaselineUpdate(stdout, stderr io.Writer, opts *models.Options, report *models.Report, moduleRoot string) (bool, int) {
@@ -1277,20 +1233,16 @@ func handleBaselineUpdate(stdout, stderr io.Writer, opts *models.Options, report
 	return true, returnOk
 }
 
-func printResultsIfNeeded(stdout io.Writer, opts *models.Options, report *models.Report) {
-	if opts.Exec.NoExec {
-		fmt.Fprintln(stdout, "Cannot do a mutation testing summary since no exec command was executed.")
-		return
-	}
+func printResultsIfNeeded(stdout io.Writer, opts *models.Options, report *models.Report, roots sourceRoots) {
 	if opts.Exec.RunMutantID == "" {
 		printSummary(stdout, report)
 	}
 	if opts.Logger.GitHub {
-		printGitHubAnnotations(stdout, report)
+		printGitHubAnnotations(stdout, report, roots)
 	}
 }
 
-func writeAllReports(stderr io.Writer, opts *models.Options, report *models.Report, moduleRoot string) int {
+func writeAllReports(stderr io.Writer, opts *models.Options, report *models.Report, roots sourceRoots) int {
 	specs := []reportSpec{
 		{
 			enabled:  opts.Config.JSONOutput,
@@ -1304,12 +1256,12 @@ func writeAllReports(stderr io.Writer, opts *models.Options, report *models.Repo
 		},
 		{
 			enabled:  opts.Logger.AgenticJSON,
-			write:    func() error { return reportmaker.MakeAgenticJSONReport(*report, moduleRoot) },
+			write:    func() error { return reportmaker.MakeAgenticJSONReport(*report, roots.module) },
 			savedMsg: "Save agentic report into %q", fileName: models.ReportAgenticJSONFileName,
 		},
 		{
 			enabled:  opts.Logger.GitLab,
-			write:    func() error { return reportmaker.MakeGitLabReport(*report, moduleRoot) },
+			write:    func() error { return reportmaker.MakeGitLabReport(*report, roots.RepoPath) },
 			savedMsg: "Save GitLab report into %q", fileName: models.ReportGitLabJSONFileName,
 		},
 		{
@@ -1377,19 +1329,10 @@ func printSummary(stdout io.Writer, report *models.Report) {
 	}
 }
 
-func printGitHubAnnotations(stdout io.Writer, report *models.Report) {
-	repoRoot := ""
-	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
-		repoRoot = strings.TrimSpace(string(out))
-	}
-
+func printGitHubAnnotations(stdout io.Writer, report *models.Report, roots sourceRoots) {
 	for _, m := range report.Escaped {
-		// GitHub resolves annotation paths against the repository root, which
-		// differs from the module root when the module lives in a subdirectory.
-		filePath := filepath.ToSlash(m.Mutator.OriginalFilePath)
-		if repoRoot != "" {
-			filePath = baseline.RelPath(m.Mutator.OriginalFilePath, repoRoot)
-		}
+		// GitHub resolves annotation paths against the repository root.
+		filePath := roots.RepoPath(m.Mutator.OriginalFilePath)
 		fmt.Fprintf(stdout, "::warning file=%s,line=%d,title=Mutant escaped (%s)::Escaped mutation at %s:%d — add a test to kill it\n",
 			filePath,
 			m.Mutator.OriginalStartLine,
