@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.30] — 2026-10-16
+
+Replicates quality-gates/mutago v2.10.30.
+
+### Fixed
+- Ctrl-C, SIGTERM, or an `Engine` caller's deadline now stops the baseline check, the `--coverage` run, and `--per-test` listing, compiling, and profiling. Before, only mutant runs stopped; these steps kept going, and adaptive baseline timing could wait up to 300 seconds. go-mutesting now exits with a tool error (3), starts no more per-test runs, and does not fall back to the full suite. The temp directory is still removed, or kept with `--do-not-remove-tmp-folder` (quality-gates/mutago#305).
+
 ## [v2.10.29] — 2026-10-15
 
 Replicates quality-gates/mutago v2.10.29.
@@ -761,7 +768,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.29...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.30...HEAD
+[v2.10.30]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.29...v2.10.30
 [v2.10.29]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.28...v2.10.29
 [v2.10.28]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.27...v2.10.28
 [v2.10.27]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.26...v2.10.27

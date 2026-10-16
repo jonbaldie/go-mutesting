@@ -1,8 +1,10 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -139,6 +141,19 @@ func TestImportPathsCachesFailedLookup(t *testing.T) {
 	}
 }
 
+// go list runs under the run context, so a cancelled run resolves nothing.
+func TestImportPathsUseRunContext(t *testing.T) {
+	file := []string{"gotest.go"}
+	if got := newImportPaths(context.Background(), "", nil).forFiles(file); got != "github.com/jonbaldie/go-mutesting/v2/internal/engine" {
+		t.Fatalf("forFiles = %q with a live run", got)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := newImportPaths(ctx, "", nil).forFiles(file); got != "" {
+		t.Fatalf("forFiles = %q after cancellation, want empty", got)
+	}
+}
+
 func TestImportPathsNoFiles(t *testing.T) {
 	paths := &importPaths{lookup: func(string) string { t.Fatal("unexpected lookup"); return "" }}
 	if got := paths.forFiles(nil); got != "" {
@@ -214,6 +229,31 @@ func TestPerTestToolchainCommands(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestPerTestToolchainCommandsUseRunContext checks that every per-test
+// command is bound to the run context: none starts once the run is cancelled.
+func TestPerTestToolchainCommandsUseRunContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	tc := perTestToolchain{ctx: ctx, timeoutSeconds: 30}
+	if tc.Context() != ctx {
+		t.Fatal("toolchain context is not the run context")
+	}
+	for kind, cmd := range map[string]*exec.Cmd{
+		"list tests":    tc.ListTests("example.com/m/pkg"),
+		"list packages": tc.ListPackages("example.com/m/pkg/..."),
+		"compile":       tc.CompileTestBinary("example.com/m/pkg", "example.com/m/pkg", filepath.Join(t.TempDir(), "tests")),
+		"run":           tc.RunTest(os.Args[0], "TestA", filepath.Join(t.TempDir(), "c.out")),
+	} {
+		if err := cmd.Start(); !errors.Is(err, context.Canceled) {
+			if err == nil {
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
+			}
+			t.Errorf("%s: Start() error = %v, want context.Canceled", kind, err)
+		}
 	}
 }
 
