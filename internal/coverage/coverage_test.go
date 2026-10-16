@@ -1,11 +1,14 @@
 package coverage
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,6 +25,8 @@ func (g goToolchain) record(kind string) {
 		*g.calls = append(*g.calls, kind)
 	}
 }
+
+func (g goToolchain) Context() context.Context { return context.Background() }
 
 func (g goToolchain) ListTests(pkgPath string) *exec.Cmd {
 	g.record("list tests")
@@ -683,16 +688,41 @@ func TestBuildPerTestProfile_NoTests(t *testing.T) {
 }
 
 // scriptedToolchain compiles nothing and runs each test as the shell script
-// named for it in runs, with $1 set to the test's profile path.
+// named for it in runs, with $1 set to the test's profile path. Compiling
+// runs the compile script, when set.
+// Its commands are bound to ctx, the run context (none means background),
+// and testRuns, when set, counts the test commands built.
 type scriptedToolchain struct {
-	runs map[string]string
+	runs     map[string]string
+	compile  string
+	ctx      context.Context
+	testRuns *atomic.Int32
 }
 
-func (s scriptedToolchain) ListTests(string) *exec.Cmd                 { return exec.Command("true") }
-func (s scriptedToolchain) ListPackages(string) *exec.Cmd              { return exec.Command("true") }
-func (s scriptedToolchain) CompileTestBinary(_, _, _ string) *exec.Cmd { return exec.Command("true") }
+func (s scriptedToolchain) Context() context.Context {
+	if s.ctx == nil {
+		return context.Background()
+	}
+	return s.ctx
+}
+
+func (s scriptedToolchain) ListTests(string) *exec.Cmd {
+	return exec.CommandContext(s.Context(), "echo", "TestTouch")
+}
+func (s scriptedToolchain) ListPackages(string) *exec.Cmd {
+	return exec.CommandContext(s.Context(), "echo", "example.com/m/rec")
+}
+func (s scriptedToolchain) CompileTestBinary(_, _, _ string) *exec.Cmd {
+	if s.compile != "" {
+		return exec.CommandContext(s.Context(), "sh", "-c", s.compile)
+	}
+	return exec.CommandContext(s.Context(), "true")
+}
 func (s scriptedToolchain) RunTest(_, testName, profilePath string) *exec.Cmd {
-	return exec.Command("sh", "-c", s.runs[testName], "sh", profilePath)
+	if s.testRuns != nil {
+		s.testRuns.Add(1)
+	}
+	return exec.CommandContext(s.Context(), "sh", "-c", s.runs[testName], "sh", profilePath)
 }
 
 const writeValidProfile = `printf 'mode: set\nexample.com/m/rec/rec.go:3.24,5.2 1 1\n' > "$1"`
@@ -743,4 +773,122 @@ func TestBuildPerTestProfile_FailingTestWithValidProfileIsCovered(t *testing.T) 
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"TestCheck", "TestTouch"}, prof.CoveringTestsRelative("rec/rec.go", 4))
+}
+
+func TestListTestPackages_CancelledRunIsAnError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	tc := scriptedToolchain{ctx: ctx}
+
+	for _, recursive := range []bool{false, true} {
+		pkgs, err := ListTestPackages(tc, "example.com/m/rec", recursive)
+
+		assert.ErrorIs(t, err, context.Canceled, "recursive=%v", recursive)
+		assert.Nil(t, pkgs, "recursive=%v", recursive)
+	}
+}
+
+func TestBuildPerTestProfile_CancelledBeforeCompileRunsNoTests(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ran := filepath.Join(t.TempDir(), "ran")
+	tc := scriptedToolchain{ctx: ctx, runs: map[string]string{"TestTouch": `: > "` + ran + `"`}}
+	pkgs := []TestPackage{{ImportPath: "example.com/m/rec", Tests: []string{"TestTouch"}}}
+
+	prof, err := BuildPerTestProfileForPackages(tc, "example.com/m/rec", pkgs, "example.com/m", t.TempDir(), 1)
+
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Nil(t, prof)
+	assert.NoFileExists(t, ran)
+}
+
+// A cancelled run stops the test in progress, starts no further test, and
+// reports the cancellation rather than a lost profile.
+func TestBuildPerTestProfile_CancellationStopsProfiling(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dir := t.TempDir()
+	started, second := filepath.Join(dir, "started"), filepath.Join(dir, "second")
+	var testRuns atomic.Int32
+	tc := scriptedToolchain{ctx: ctx, testRuns: &testRuns, runs: map[string]string{
+		"TestTouch": `: > "` + started + `"; exec sleep 30`,
+		"TestCheck": `: > "` + second + `"; ` + writeValidProfile,
+		"TestThird": writeValidProfile,
+	}}
+	pkgs := []TestPackage{{ImportPath: "example.com/m/rec", Tests: []string{"TestTouch", "TestCheck", "TestThird"}}}
+	cancelOnMarker(ctx, cancel, started)
+
+	prof, err := buildWithin(t, 10*time.Second, tc, pkgs)
+
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.NotContains(t, err.Error(), "coverage.out", "cancellation is not a lost profile")
+	assert.Nil(t, prof)
+	assert.NoFileExists(t, second, "no test starts after cancellation")
+	assert.Equal(t, int32(1), testRuns.Load(), "no test is admitted after cancellation")
+}
+
+// A compile the run's cancellation kills reports the cancellation, while any
+// other compile failure keeps the command's own error.
+func TestBuildPerTestProfile_CompileErrors(t *testing.T) {
+	pkgs := []TestPackage{{ImportPath: "example.com/m/rec", Tests: []string{"TestTouch"}}}
+
+	t.Run("failed", func(t *testing.T) {
+		tc := scriptedToolchain{compile: "echo boom; exit 3"}
+
+		prof, err := buildWithin(t, 10*time.Second, tc, pkgs)
+
+		var exitErr *exec.ExitError
+		assert.ErrorAs(t, err, &exitErr)
+		assert.NotErrorIs(t, err, context.Canceled)
+		assert.ErrorContains(t, err, "boom")
+		assert.Nil(t, prof)
+	})
+
+	t.Run("cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		started := filepath.Join(t.TempDir(), "started")
+		tc := scriptedToolchain{ctx: ctx, compile: `: > "` + started + `"; exec sleep 30`}
+		cancelOnMarker(ctx, cancel, started)
+
+		prof, err := buildWithin(t, 10*time.Second, tc, pkgs)
+
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Nil(t, prof)
+	})
+}
+
+// cancelOnMarker cancels the run once the marker file exists.
+func cancelOnMarker(ctx context.Context, cancel context.CancelFunc, marker string) {
+	go func() {
+		for ctx.Err() == nil {
+			if _, err := os.Stat(marker); err == nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+}
+
+// buildWithin builds the per-test profile with one worker, failing the test
+// if it has not returned within limit.
+func buildWithin(t *testing.T, limit time.Duration, tc Toolchain, pkgs []TestPackage) (*PerTestProfile, error) {
+	t.Helper()
+	type built struct {
+		prof *PerTestProfile
+		err  error
+	}
+	done := make(chan built, 1)
+	go func() {
+		prof, err := BuildPerTestProfileForPackages(tc, "example.com/m/rec", pkgs, "example.com/m", t.TempDir(), 1)
+		done <- built{prof, err}
+	}()
+	select {
+	case b := <-done:
+		return b.prof, b.err
+	case <-time.After(limit):
+		t.Fatalf("per-test profiling did not return within %s", limit)
+		return nil, nil
+	}
 }

@@ -3,6 +3,7 @@ package coverage
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -243,8 +244,11 @@ func (p *PerTestProfile) CoveringTestsRelative(relFile string, lineNum int) []st
 }
 
 // Toolchain builds the commands that per-test profiling runs. The caller
-// owns how the user's test flags reach each command.
+// owns how the user's test flags reach each command, and the run lifetime:
+// every command is bound to Context, and profiling stops once it is done.
 type Toolchain interface {
+	// Context is the run context the commands are bound to.
+	Context() context.Context
 	// ListTests lists the top-level tests of pkgPath, one per line.
 	ListTests(pkgPath string) *exec.Cmd
 	// ListPackages lists the import paths matching pattern.
@@ -271,7 +275,7 @@ func CountTests(tc Toolchain, pkgPath string) int {
 func ListTests(tc Toolchain, pkgPath string) ([]string, error) {
 	out, err := tc.ListTests(pkgPath).Output()
 	if err != nil {
-		return nil, err
+		return nil, runError(tc, err)
 	}
 	var names []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -324,7 +328,7 @@ func ListTestPackages(tc Toolchain, pkgPath string, recursive bool) ([]TestPacka
 func listPackages(tc Toolchain, pattern string) ([]string, error) {
 	out, err := tc.ListPackages(pattern).Output()
 	if err != nil {
-		return nil, err
+		return nil, runError(tc, err)
 	}
 	return strings.Fields(string(out)), nil
 }
@@ -380,7 +384,20 @@ func BuildPerTestProfileForPackages(tc Toolchain, pkgPath string, pkgs []TestPac
 		workers = 1
 	}
 	results := profileTests(tc, jobs, workers, modulePath)
-	return mergePerTestProfiles(results, len(jobs))
+	prof, err := mergePerTestProfiles(results, len(jobs))
+	if ctxErr := tc.Context().Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	return prof, err
+}
+
+// runError returns the run's cancellation in place of err, the failure of a
+// command it killed or never started.
+func runError(tc Toolchain, err error) error {
+	if ctxErr := tc.Context().Err(); ctxErr != nil {
+		return ctxErr
+	}
+	return err
 }
 
 // perTestJob is a work item for a per-test profiling worker.
@@ -404,7 +421,7 @@ func compileCoverageTestBinary(tc Toolchain, pkgPath, coverPkg, tmpDir string) (
 	}
 	binaryPath := filepath.Join(binaryDir, "tests")
 	if output, err := tc.CompileTestBinary(pkgPath, coverPkg, binaryPath).CombinedOutput(); err != nil {
-		return "", fmt.Errorf("compile coverage test binary: %w: %s", err, output)
+		return "", runError(tc, fmt.Errorf("compile coverage test binary: %w: %s", err, output))
 	}
 	return binaryPath, nil
 }
@@ -449,9 +466,15 @@ func mergePerTestProfiles(results <-chan perTestResult, count int) (*PerTestProf
 }
 
 // runPerTestWorker writes each test's profile beside its binary, so tests that
-// share a name across packages do not overwrite each other's profiles.
+// share a name across packages do not overwrite each other's profiles. Once
+// the run is cancelled it starts no more tests and reports each remaining job
+// as cancelled.
 func runPerTestWorker(tc Toolchain, jobs <-chan perTestJob, results chan<- perTestResult, modulePath string) {
 	for job := range jobs {
+		if err := tc.Context().Err(); err != nil {
+			results <- perTestResult{err: err}
+			continue
+		}
 		profDir := filepath.Join(filepath.Dir(job.binaryPath), job.name)
 		_ = os.MkdirAll(profDir, 0755)
 		profPath := filepath.Join(profDir, "coverage.out")

@@ -146,21 +146,31 @@ func (g goTestInvocation) mutantArgs() []string {
 
 // perTestToolchain builds the commands --per-test profiling runs, so the
 // user's test flags reach them by the same rules as every other go test run.
+// Every command is bound to ctx, the run context.
 type perTestToolchain struct {
+	ctx            context.Context
 	testFlags      []string
 	timeoutSeconds uint
 	dir            string
 }
 
+// Context returns the run context, or the background context when none is set.
+func (t perTestToolchain) Context() context.Context {
+	if t.ctx == nil {
+		return context.Background()
+	}
+	return t.ctx
+}
+
 func (t perTestToolchain) ListTests(pkgPath string) *exec.Cmd {
-	return goTestInvocation{kind: listTestsRun, target: pkgPath, dir: t.dir, timeoutSeconds: t.timeoutSeconds, testFlags: t.testFlags}.command(context.Background())
+	return goTestInvocation{kind: listTestsRun, target: pkgPath, dir: t.dir, timeoutSeconds: t.timeoutSeconds, testFlags: t.testFlags}.command(t.Context())
 }
 
 // ListPackages runs `go list` with the user's build flags, so a package whose
 // files all sit behind a build tag is still found.
 func (t perTestToolchain) ListPackages(pattern string) *exec.Cmd {
 	args := append([]string{"list"}, buildTestFlags(t.testFlags)...)
-	return goCommandIn(context.Background(), t.dir, append(args, pattern)...)
+	return goCommandIn(t.Context(), t.dir, append(args, pattern)...)
 }
 
 func (t perTestToolchain) CompileTestBinary(pkgPath, coverPkg, binaryPath string) *exec.Cmd {
@@ -172,7 +182,7 @@ func (t perTestToolchain) CompileTestBinary(pkgPath, coverPkg, binaryPath string
 		testFlags:      t.testFlags,
 		coverPkg:       coverPkg,
 		binaryPath:     binaryPath,
-	}.command(context.Background())
+	}.command(t.Context())
 }
 
 // RunTest runs one test of a binary from CompileTestBinary. The user's runner
@@ -182,7 +192,7 @@ func (t perTestToolchain) RunTest(binaryPath, testName, profilePath string) *exe
 		"-test.run=^"+testName+"$",
 		"-test.coverprofile="+profilePath,
 		fmt.Sprintf("-test.timeout=%ds", t.timeoutSeconds))
-	cmd := exec.Command(binaryPath, args...)
+	cmd := exec.CommandContext(t.Context(), binaryPath, args...)
 	cmd.Env = os.Environ()
 	return cmd
 }
@@ -214,11 +224,11 @@ type importPaths struct {
 
 // newImportPaths resolves import paths by running `go list` in workDir with
 // the user's build flags, so a package whose files all sit behind a build tag
-// is still found.
-func newImportPaths(workDir string, testFlags []string) *importPaths {
+// is still found. Each `go list` is bound to ctx, the run context.
+func newImportPaths(ctx context.Context, workDir string, testFlags []string) *importPaths {
 	buildFlags := buildTestFlags(testFlags)
 	return &importPaths{lookup: func(dir string) string {
-		return goListImportPath(workDir, buildFlags, dir)
+		return goListImportPath(ctx, workDir, buildFlags, dir)
 	}}
 }
 
@@ -244,9 +254,9 @@ func (p *importPaths) forFiles(files []string) string {
 	return path
 }
 
-func goListImportPath(workDir string, buildFlags []string, dir string) string {
+func goListImportPath(ctx context.Context, workDir string, buildFlags []string, dir string) string {
 	args := append(append([]string{"list"}, buildFlags...), dir)
-	out, err := goCommandIn(context.Background(), workDir, args...).Output()
+	out, err := goCommandIn(ctx, workDir, args...).Output()
 	if err != nil {
 		return ""
 	}

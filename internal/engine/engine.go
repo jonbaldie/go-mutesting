@@ -202,8 +202,8 @@ func (e *Engine) RunResolved(ctx context.Context, opts *models.Options, bl *base
 	defer cleanup()
 
 	report := run.report
-	if exitCode := runBaselineChecks(runEngine.Stderr, opts, pkgs, run.exec); exitCode != 0 {
-		return Result{Report: report, ExitCode: exitCode}, nil
+	if exitCode := runBaselineChecks(ctx, runEngine.Stderr, opts, pkgs, run.exec); exitCode != 0 {
+		return Result{Report: report, ExitCode: exitCode}, ctx.Err()
 	}
 
 	coverageProfiles, err := configureAdaptiveTimeoutAndCoverage(opts, pkgs, run)
@@ -327,7 +327,7 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, mode runMode
 			numWorkers:     numWorkers,
 			execs:          execs,
 			extraTestFlags: extraTestFlags,
-			importPaths:    newImportPaths(goDir, extraTestFlags),
+			importPaths:    newImportPaths(ctx, goDir, extraTestFlags),
 			goDir:          goDir,
 			mode:           mode,
 		},
@@ -487,7 +487,10 @@ func mutateAll(r *mutationRun, pkgs []importing.Package, coverageProfiles []*cov
 		if coverageProfiles != nil {
 			coverProfile = coverageProfiles[i]
 		}
-		perTestProf := perTestForPackage(r, importPkg)
+		perTestProf, err := perTestForPackage(r, importPkg)
+		if err != nil {
+			return returnError
+		}
 		testPkg := r.exec.importPaths.forFiles(importPkg.Files)
 		for _, file := range importPkg.Files {
 			if r.ctx.Err() != nil {
@@ -503,7 +506,7 @@ func mutateAll(r *mutationRun, pkgs []importing.Package, coverageProfiles []*cov
 
 func configureAdaptiveTimeoutAndCoverage(opts *models.Options, pkgs []importing.Package, run *mutationRun) ([]*coverage.Profile, error) {
 	if opts.Exec.Coverage && run.exec.mode.executes() {
-		profiles, maxBaseline, err := prepareCoverageProfiles(opts, pkgs, run.exec, run.tmpDir, run.modulePath, run.report)
+		profiles, maxBaseline, err := prepareCoverageProfiles(run.ctx, opts, pkgs, run.exec, run.tmpDir, run.modulePath, run.report)
 		if err != nil {
 			return nil, err
 		}
@@ -515,11 +518,11 @@ func configureAdaptiveTimeoutAndCoverage(opts *models.Options, pkgs []importing.
 	return nil, nil
 }
 
-func prepareCoverageProfiles(opts *models.Options, pkgs []importing.Package, ec execConfig, tmpDir string, modulePath string, report *models.Report) ([]*coverage.Profile, time.Duration, error) {
+func prepareCoverageProfiles(ctx context.Context, opts *models.Options, pkgs []importing.Package, ec execConfig, tmpDir string, modulePath string, report *models.Report) ([]*coverage.Profile, time.Duration, error) {
 	profiles := make([]*coverage.Profile, len(pkgs))
 	var maxBaseline time.Duration
 	for i, importPkg := range pkgs {
-		profile, elapsed, err := buildCoverageProfile(opts, ec.importPaths.forFiles(importPkg.Files), ec.goDir, tmpDir, modulePath, ec.extraTestFlags)
+		profile, elapsed, err := buildCoverageProfile(ctx, opts, ec.importPaths.forFiles(importPkg.Files), ec.goDir, tmpDir, modulePath, ec.extraTestFlags)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -534,11 +537,11 @@ func prepareCoverageProfiles(opts *models.Options, pkgs []importing.Package, ec 
 	return profiles, maxBaseline, nil
 }
 
-func perTestForPackage(r *mutationRun, importPkg importing.Package) *coverage.PerTestProfile {
+func perTestForPackage(r *mutationRun, importPkg importing.Package) (*coverage.PerTestProfile, error) {
 	if !r.opts.Exec.PerTest || !r.exec.mode.executes() || len(r.exec.execs) != 0 {
-		return nil
+		return nil, nil
 	}
-	return buildPerTestCoverageProfile(r.stdout, r.opts, r.exec.importPaths.forFiles(importPkg.Files), r.modulePath, r.tmpDir, r.exec)
+	return buildPerTestCoverageProfile(r.ctx, r.stdout, r.opts, r.exec.importPaths.forFiles(importPkg.Files), r.modulePath, r.tmpDir, r.exec)
 }
 
 func processFile(r *mutationRun, file string, testPkg string, coverProfile *coverage.Profile, perTestProf *coverage.PerTestProfile) (int, int) {
@@ -869,39 +872,28 @@ func runsGoTest(opts *models.Options, mode runMode, execs []string) bool {
 	return mode.executes() && (len(execs) == 0 || opts.Exec.Coverage)
 }
 
-func runBaselineChecks(stderr io.Writer, opts *models.Options, pkgs []importing.Package, ec execConfig) int {
+func runBaselineChecks(ctx context.Context, stderr io.Writer, opts *models.Options, pkgs []importing.Package, ec execConfig) int {
 	if skipBaselineChecks(opts, ec.mode, ec.execs) {
 		return 0 // returnOk
 	}
-	timeout := opts.Exec.Timeout
-	flags := ec.extraTestFlags
+	inv := goTestInvocation{
+		kind:           baselineRun,
+		dir:            ec.goDir,
+		recursive:      opts.Test.Recursive,
+		timeoutSeconds: opts.Exec.Timeout,
+		testFlags:      ec.extraTestFlags,
+	}
 	measureAdaptive := opts.Exec.TimeoutCoefficient > 0
 	if measureAdaptive {
-		timeout = adaptiveBaselineTimeoutSeconds
-		flags = uncachedTestFlags(ec.extraTestFlags)
+		inv.timeoutSeconds = adaptiveBaselineTimeoutSeconds
+		inv.testFlags = uncachedTestFlags(ec.extraTestFlags)
 	}
 	var maxBaseline time.Duration
 	for _, importPkg := range pkgs {
-		pkgPath := ec.importPaths.forFiles(importPkg.Files)
-		if pkgPath == "" {
-			fmt.Fprintf(stderr, "Cannot resolve the package of %q — go-mutesting must test the package of the mutated files\n", importPkg.Files)
-			return 3 // returnError
-		}
-		inv := goTestInvocation{
-			kind:           baselineRun,
-			target:         pkgPath,
-			dir:            ec.goDir,
-			recursive:      opts.Test.Recursive,
-			timeoutSeconds: timeout,
-			testFlags:      flags,
-		}
-		cmd := inv.command(context.Background())
-		start := time.Now()
-		out, err := cmd.CombinedOutput()
-		elapsed := time.Since(start)
-		if err != nil {
-			fmt.Fprintf(stderr, "Baseline test failed for %q — mutation testing requires a green baseline; fix the build/tests before running go-mutesting:\n%s\n", pkgPath, out)
-			return 3 // returnError
+		inv.target = ec.importPaths.forFiles(importPkg.Files)
+		elapsed, code := runBaselineCheck(ctx, stderr, inv, importPkg.Files)
+		if code != 0 {
+			return code
 		}
 		if elapsed > maxBaseline {
 			maxBaseline = elapsed
@@ -912,6 +904,37 @@ func runBaselineChecks(stderr io.Writer, opts *models.Options, pkgs []importing.
 	}
 	console.Verbose(opts, "Baseline check passed — all packages green before mutation")
 	return 0 // returnOk
+}
+
+// runBaselineCheck runs the baseline tests of one package, whose import path
+// inv.target is empty when it could not be resolved, and returns how long
+// they took.
+func runBaselineCheck(ctx context.Context, stderr io.Writer, inv goTestInvocation, files []string) (time.Duration, int) {
+	if ctx.Err() != nil {
+		return 0, baselineCancelled(ctx, stderr)
+	}
+	if inv.target == "" {
+		fmt.Fprintf(stderr, "Cannot resolve the package of %q — go-mutesting must test the package of the mutated files\n", files)
+		return 0, 3 // returnError
+	}
+	start := time.Now()
+	out, err := inv.command(ctx).CombinedOutput()
+	elapsed := time.Since(start)
+	if ctx.Err() != nil {
+		return 0, baselineCancelled(ctx, stderr)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "Baseline test failed for %q — mutation testing requires a green baseline; fix the build/tests before running go-mutesting:\n%s\n", inv.target, out)
+		return 0, 3 // returnError
+	}
+	return elapsed, 0
+}
+
+// baselineCancelled reports that the run was cancelled during the baseline
+// check.
+func baselineCancelled(ctx context.Context, stderr io.Writer) int {
+	fmt.Fprintf(stderr, "Baseline check cancelled: %v\n", ctx.Err())
+	return 3 // returnError
 }
 
 func applyAdaptiveTimeoutFromBaseline(opts *models.Options, baseline time.Duration) {
@@ -927,7 +950,7 @@ func applyAdaptiveTimeoutFromBaseline(opts *models.Options, baseline time.Durati
 		baseline.Seconds(), opts.Exec.TimeoutCoefficient, derived)
 }
 
-func buildCoverageProfile(opts *models.Options, pkgPath string, goDir string, tmpDir string, modulePath string, extraTestFlags []string) (*coverage.Profile, time.Duration, error) {
+func buildCoverageProfile(ctx context.Context, opts *models.Options, pkgPath string, goDir string, tmpDir string, modulePath string, extraTestFlags []string) (*coverage.Profile, time.Duration, error) {
 	if !opts.Exec.Coverage {
 		return nil, 0, nil
 	}
@@ -955,7 +978,7 @@ func buildCoverageProfile(opts *models.Options, pkgPath string, goDir string, tm
 		testFlags:      coverageTestFlags,
 		profilePath:    profilePath,
 	}
-	if err := runCoverageProfile(inv); err != nil {
+	if err := runCoverageProfile(ctx, inv); err != nil {
 		return nil, time.Since(start), err
 	}
 	elapsed := time.Since(start)
@@ -985,9 +1008,12 @@ func validateAdaptiveTimeoutTestCount(opts *models.Options, mode runMode) error 
 	return nil
 }
 
-func runCoverageProfile(inv goTestInvocation) error {
-	cmd := inv.command(context.Background())
+func runCoverageProfile(ctx context.Context, inv goTestInvocation) error {
+	cmd := inv.command(ctx)
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		return fmt.Errorf("coverage test cancelled for %q: %w", inv.target, ctx.Err())
+	}
 	if err != nil {
 		return fmt.Errorf("coverage test failed for %q: %w\n%s", inv.target, err, out)
 	}
@@ -1000,15 +1026,16 @@ func runCoverageProfile(inv goTestInvocation) error {
 // buildPerTestCoverageProfile maps each line of pkgPath to the tests that cover
 // it. With --test-recursive the tests of every subpackage are profiled too, so
 // the -run filter keeps them eligible just as the recursive mutant run does.
-func buildPerTestCoverageProfile(stdout io.Writer, opts *models.Options, pkgPath string, modulePath string, tmpDir string, ec execConfig) *coverage.PerTestProfile {
+// A profile it cannot build is nil, so mutants run against the full suite.
+// A cancelled run is an error instead, so no mutant runs at all.
+func buildPerTestCoverageProfile(ctx context.Context, stdout io.Writer, opts *models.Options, pkgPath string, modulePath string, tmpDir string, ec execConfig) (*coverage.PerTestProfile, error) {
 	if pkgPath == "" {
-		return nil
+		return nil, nil
 	}
-	tc := perTestToolchain{testFlags: ec.extraTestFlags, timeoutSeconds: opts.Exec.Timeout, dir: ec.goDir}
+	tc := perTestToolchain{ctx: ctx, testFlags: ec.extraTestFlags, timeoutSeconds: opts.Exec.Timeout, dir: ec.goDir}
 	pkgs, err := coverage.ListTestPackages(tc, pkgPath, opts.Test.Recursive)
 	if err != nil {
-		console.Verbose(opts, "Per-test coverage unavailable for %q: %v", pkgPath, err)
-		return nil
+		return perTestUnavailable(ctx, opts, pkgPath, err)
 	}
 	testCount := 0
 	for _, pkg := range pkgs {
@@ -1019,13 +1046,22 @@ func buildPerTestCoverageProfile(stdout io.Writer, opts *models.Options, pkgPath
 	}
 	prof, err := coverage.BuildPerTestProfileForPackages(tc, pkgPath, pkgs, modulePath, tmpDir, ec.numWorkers)
 	if err != nil {
-		console.Verbose(opts, "Per-test coverage unavailable for %q: %v", pkgPath, err)
-		return nil
+		return perTestUnavailable(ctx, opts, pkgPath, err)
 	}
 	if prof != nil {
 		console.Verbose(opts, "Per-test coverage map built for %q", pkgPath)
 	}
-	return prof
+	return prof, nil
+}
+
+// perTestUnavailable returns the run's cancellation, or no profile when the
+// run goes on.
+func perTestUnavailable(ctx context.Context, opts *models.Options, pkgPath string, err error) (*coverage.PerTestProfile, error) {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	console.Verbose(opts, "Per-test coverage unavailable for %q: %v", pkgPath, err)
+	return nil, nil
 }
 
 func calcNumWorkers(opts *models.Options, execs []string) int {
