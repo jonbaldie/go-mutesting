@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.31] — 2026-10-19
+
+Ports the paired-location change from quality-gates/mutago v2.10.33.
+
+### Fixed
+- Keep paired physical and coverage locations for mutations. Git scope, snippets, console links, and CI annotations now use physical lines in files with `//line` directives; legacy report fields and mutant IDs stay unchanged (quality-gates/mutago#304).
+
 ## [v2.10.30] — 2026-10-16
 
 Replicates quality-gates/mutago v2.10.30.
@@ -768,7 +775,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.30...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.31...HEAD
+[v2.10.31]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.30...v2.10.31
 [v2.10.30]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.29...v2.10.30
 [v2.10.29]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.28...v2.10.29
 [v2.10.28]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.27...v2.10.28
