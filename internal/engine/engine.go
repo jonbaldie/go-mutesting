@@ -137,17 +137,6 @@ type execJob struct {
 	// and never appear in `go test` coverage profiles, so the --coverage
 	// filter must not skip them as NOT COVERED (see #83).
 	packageLevelDecl bool
-	// directiveShifted is true when a //line directive altered the position
-	// go-mutesting reports for this mutation (filename and/or line differ from the
-	// raw source position). Go's coverage profile records such positions under
-	// the directive's filename (or "." for a filename-less directive), not the
-	// physical file, so the coverage lookup must consult the directive
-	// filename too (see #84).
-	directiveShifted bool
-	// adjRelFile is the directive-adjusted filename relative to the module
-	// root (the filename Go's coverage profile uses for this position). It is
-	// only meaningful when directiveShifted is true.
-	adjRelFile string
 }
 
 type mutationSource struct {
@@ -650,8 +639,7 @@ func applyMutator(r *mutationRun, m mutatorItem, fc *fileContext, node ast.Node,
 			break
 		}
 
-		originalStartLine := int64(fc.fset.Position(mutation.Position).Line)
-		recordOneMutation(r, m, fc, mutation, mutationID, originalStartLine)
+		recordOneMutation(r, m, fc, mutation, mutationID)
 
 		changed <- mutesting.PositionedMutation{}
 		<-changed
@@ -669,8 +657,8 @@ type preparedMutation struct {
 	relFile   string
 }
 
-func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, originalStartLine int64) {
-	prepared, ok := prepareScopedMutation(r, m, fc, mutation, originalStartLine, fc.originalSource)
+func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int) {
+	prepared, ok := prepareScopedMutation(r, m, fc, mutation, fc.originalSource)
 	if !ok {
 		return
 	}
@@ -685,11 +673,17 @@ func recordOneMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation 
 	r.sink.admit(fc, mutation, mutationID, prepared)
 }
 
-func prepareScopedMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, originalStartLine int64, originalSourceCode []byte) (preparedMutation, bool) {
+func prepareScopedMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutation mutesting.PositionedMutation, originalSourceCode []byte) (preparedMutation, bool) {
+	physical := fc.fset.PositionFor(mutation.Position, false)
+	adjusted := fc.fset.PositionFor(mutation.Position, true)
 	mutant := models.Mutant{}
+	mutant.Mutator.Location = &models.MutationLocation{
+		Physical: models.Coordinate{Filename: fc.sourceFile, Line: int64(physical.Line)},
+		Coverage: models.Coordinate{Filename: adjusted.Filename, Line: int64(adjusted.Line)},
+	}
 	mutant.Mutator.MutatorName = m.Name
 	mutant.Mutator.OriginalFilePath = fc.sourceFile
-	mutant.Mutator.OriginalStartLine = originalStartLine
+	mutant.Mutator.OriginalStartLine = int64(adjusted.Line)
 
 	edit, err := captureMutationEdit(fc.fset, mutation.Node, mutation.Start, mutation.End, originalSourceCode)
 	if err != nil {
@@ -709,7 +703,7 @@ func prepareScopedMutation(r *mutationRun, m mutatorItem, fc *fileContext, mutat
 		candidate: scopeCandidate{
 			repoFile: r.roots.RepoPath(fc.absFile),
 			absFile:  fc.absFile,
-			line:     int(originalStartLine),
+			line:     int(mutant.Mutator.SourceLocation().Line),
 			checksum: checksum,
 			id:       id,
 		},
@@ -783,8 +777,6 @@ func noteRejectedMutation(r *mutationRun, c scopeCandidate, reason skipReason) {
 }
 
 func queueMutation(r *mutationRun, jobs chan<- execJob, fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, originalSourceCode []byte, prepared preparedMutation) {
-	adjPos := fc.fset.PositionFor(mutation.Position, true)
-	rawPos := fc.fset.PositionFor(mutation.Position, false)
 	job := execJob{
 		ctx:            r.ctx,
 		opts:           r.opts,
@@ -807,8 +799,6 @@ func queueMutation(r *mutationRun, jobs chan<- execJob, fc *fileContext, mutatio
 			edit:         prepared.edit,
 		},
 		packageLevelDecl: isPackageLevelDecl(fc.src, mutation.Position),
-		directiveShifted: adjPos.Filename != rawPos.Filename || adjPos.Line != rawPos.Line,
-		adjRelFile:       r.roots.ModulePath(filepath.Join(r.roots.module, adjPos.Filename)),
 	}
 	select {
 	case <-r.ctx.Done():
@@ -1368,13 +1358,14 @@ func printSummary(stdout io.Writer, report *models.Report) {
 func printGitHubAnnotations(stdout io.Writer, report *models.Report, roots sourceRoots) {
 	for _, m := range report.Escaped {
 		// GitHub resolves annotation paths against the repository root.
-		filePath := roots.RepoPath(m.Mutator.OriginalFilePath)
+		location := m.Mutator.SourceLocation()
+		filePath := roots.RepoPath(location.Filename)
 		fmt.Fprintf(stdout, "::warning file=%s,line=%d,title=Mutant escaped (%s)::Escaped mutation at %s:%d — add a test to kill it\n",
 			filePath,
-			m.Mutator.OriginalStartLine,
+			location.Line,
 			m.Mutator.MutatorName,
 			filePath,
-			m.Mutator.OriginalStartLine,
+			location.Line,
 		)
 	}
 }
@@ -1531,26 +1522,23 @@ func stableMutationKey(original, mutated []byte) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-// mutationCovered reports whether the mutation at startLine is reached by any
-// test, accounting for //line directives. The primary lookup uses the physical
-// file path (the common case, where the adjusted line equals the raw line). For
-// directive-shifted positions Go's coverage profile files the block under the
-// directive's filename (or "." for a filename-less directive), so a second
-// lookup uses the directive-adjusted filename. A third, line-only fallback
-// handles the rare case where a single coverage block spans a //line filename
-// change and is filed under a third filename; it is gated on directiveShifted
-// so it never applies to ordinary positions (see #84).
-func mutationCovered(job execJob, startLine int) bool {
-	if job.coverProfile.IsCovered(job.source.absFile, startLine) {
+// mutationCovered uses coverage coordinates. For shifted positions, retain the
+// relative-path and line-only fallbacks for blocks that span a directive (#84).
+func mutationCovered(job execJob) bool {
+	location := job.mutant.Mutator.CoverageLocation()
+	if job.coverProfile.IsCovered(location.Filename, int(location.Line)) {
 		return true
 	}
-	if !job.directiveShifted || job.adjRelFile == "" {
+	physical := job.mutant.Mutator.SourceLocation()
+	shifted := location.Filename != job.source.absFile || location.Line != physical.Line
+	relFile := baseline.RelPath(filepath.Join(job.source.moduleRoot, location.Filename), job.source.moduleRoot)
+	if !shifted || relFile == "" {
 		return false
 	}
-	if job.coverProfile.IsCoveredRelative(job.adjRelFile, startLine) {
+	if job.coverProfile.IsCoveredRelative(relFile, int(location.Line)) {
 		return true
 	}
-	return job.coverProfile.IsLineCoveredAnywhere(startLine)
+	return job.coverProfile.IsLineCoveredAnywhere(int(location.Line))
 }
 
 // isPackageLevelDecl reports whether pos lies within a package-level
@@ -1579,8 +1567,8 @@ func runExecJob(job execJob, stats *models.Report, mu *sync.Mutex) {
 	opts := job.opts
 	mutant := job.mutant
 
-	startLine := mutant.Mutator.OriginalStartLine
-	notCovered := !job.packageLevelDecl && job.coverProfile != nil && startLine > 0 && !mutationCovered(job, int(startLine))
+	startLine := mutant.Mutator.CoverageLocation().Line
+	notCovered := !job.packageLevelDecl && job.coverProfile != nil && startLine > 0 && !mutationCovered(job)
 	if notCovered {
 		mu.Lock()
 		defer mu.Unlock()
@@ -1614,12 +1602,13 @@ func mutantLocation(opts *models.Options, mutant models.Mutant) string {
 	// Console locations are for the user at the terminal, so they stay
 	// relative to the working directory rather than using the module-root
 	// identity path from baseline.RelPath.
-	loc := mutant.Mutator.OriginalFilePath
+	location := mutant.Mutator.SourceLocation()
+	loc := location.Filename
 	if rel, err := filepath.Rel(".", loc); err == nil {
 		loc = filepath.ToSlash(rel)
 	}
-	if mutant.Mutator.OriginalStartLine > 0 {
-		loc = fmt.Sprintf("%s:%d", loc, mutant.Mutator.OriginalStartLine)
+	if location.Line > 0 {
+		loc = fmt.Sprintf("%s:%d", loc, location.Line)
 	}
 	if (opts.General.Debug || opts.General.Verbose) && mutant.Checksum != "" {
 		return fmt.Sprintf("%s (%s) [checksum: %s]", loc, mutant.Mutator.MutatorName, mutant.Checksum)
@@ -1649,7 +1638,7 @@ func runBuiltinExec(job execJob, mutant *models.Mutant) int {
 	}
 	defer os.Remove(overlayName)
 
-	execExitCode := runGoTest(job, overlayName, int(mutant.Mutator.OriginalStartLine))
+	execExitCode := runGoTest(job, overlayName)
 
 	mutant.Diff = string(diff)
 	return mapTestExitToResult(execExitCode)
@@ -1687,7 +1676,8 @@ func prepareOverlay(stderr io.Writer, tmpDir, file, mutationFile string) (string
 	return overlayName, 0
 }
 
-func runGoTest(job execJob, overlayName string, startLine int) int {
+func runGoTest(job execJob, overlayName string) int {
+	location := job.mutant.Mutator.CoverageLocation()
 	ctx, opts := job.ctx, job.opts
 	if job.test.pkg == "" {
 		fmt.Fprintf(job.out.stderr, "go-mutesting: cannot resolve the package of %q to test\n", job.source.originalFile)
@@ -1701,7 +1691,7 @@ func runGoTest(job execJob, overlayName string, startLine int) int {
 		timeoutSeconds: opts.Exec.Timeout,
 		testFlags:      job.extraTestFlags,
 		overlay:        overlayName,
-		runFilter:      perTestRunFilter(job.perTestProf, job.source.absFile, startLine),
+		runFilter:      perTestRunFilter(job.perTestProf, location.Filename, int(location.Line)),
 	}
 
 	if ctx == nil {
