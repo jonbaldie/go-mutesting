@@ -137,6 +137,17 @@ type execJob struct {
 	// and never appear in `go test` coverage profiles, so the --coverage
 	// filter must not skip them as NOT COVERED (see #83).
 	packageLevelDecl bool
+	// anchor is the switch, type switch or select that holds a mutation in a
+	// clause head. Coverage profiles have no block for clause heads (#297).
+	anchor coverageAnchor
+}
+
+type coverageAnchor struct {
+	file             string
+	relFile          string
+	rawLine          int
+	line             int
+	directiveShifted bool
 }
 
 type mutationSource struct {
@@ -165,6 +176,8 @@ type fileContext struct {
 	// identities maps mutator name to the stable IDs of its edits in this
 	// file, keyed by mutationEdit.key. See mutantIdentities.
 	identities map[string]map[string]string
+	// clauseHeads is read before any mutation changes the tree (#326).
+	clauseHeads clauseHeads
 }
 
 // Run executes the mutation testing lifecycle based on options and baseline.
@@ -590,6 +603,7 @@ func processFile(r *mutationRun, file string, testPkg string, coverProfile *cove
 		perTestProf:    perTestProf,
 		filters:        nodeFilters,
 		originalSource: originalSource,
+		clauseHeads:    collectClauseHeads(src),
 	}
 
 	return mutateFile(r, fc)
@@ -799,6 +813,7 @@ func queueMutation(r *mutationRun, jobs chan<- execJob, fc *fileContext, mutatio
 			edit:         prepared.edit,
 		},
 		packageLevelDecl: isPackageLevelDecl(fc.src, mutation.Position),
+		anchor:           clauseHeadAnchor(r, fc, mutation.Position),
 	}
 	select {
 	case <-r.ctx.Done():
@@ -1522,23 +1537,59 @@ func stableMutationKey(original, mutated []byte) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
+// clauseHeadAnchor returns the coverage anchor for a mutation in a clause head,
+// or the zero anchor elsewhere.
+func clauseHeadAnchor(r *mutationRun, fc *fileContext, pos token.Pos) coverageAnchor {
+	anchorPos := fc.clauseHeads.anchor(pos)
+	if !anchorPos.IsValid() {
+		return coverageAnchor{}
+	}
+	adj := fc.fset.PositionFor(anchorPos, true)
+	raw := fc.fset.PositionFor(anchorPos, false)
+	return coverageAnchor{
+		file:             fc.absFile,
+		relFile:          r.roots.ModulePath(filepath.Join(r.roots.module, adj.Filename)),
+		rawLine:          raw.Line,
+		line:             adj.Line,
+		directiveShifted: adj.Filename != raw.Filename || adj.Line != raw.Line,
+	}
+}
+
+func shiftedLineCovered(profile *coverage.Profile, shifted bool, relFile string, line int) bool {
+	if !shifted || relFile == "" {
+		return false
+	}
+	if profile.IsCoveredRelative(relFile, line) {
+		return true
+	}
+	return profile.IsLineCoveredAnywhere(line)
+}
+
+func anchorCovered(profile *coverage.Profile, a coverageAnchor) bool {
+	if a.rawLine > 0 && profile.IsCovered(a.file, a.rawLine) {
+		return true
+	}
+	if a.directiveShifted {
+		return shiftedLineCovered(profile, true, a.relFile, a.line)
+	}
+	return false
+}
+
 // mutationCovered uses coverage coordinates. For shifted positions, retain the
 // relative-path and line-only fallbacks for blocks that span a directive (#84).
+// A mutation in a clause head is covered when its switch or select ran (#297).
 func mutationCovered(job execJob) bool {
 	location := job.mutant.Mutator.CoverageLocation()
 	if job.coverProfile.IsCovered(location.Filename, int(location.Line)) {
 		return true
 	}
+	if anchorCovered(job.coverProfile, job.anchor) {
+		return true
+	}
 	physical := job.mutant.Mutator.SourceLocation()
 	shifted := location.Filename != job.source.absFile || location.Line != physical.Line
 	relFile := baseline.RelPath(filepath.Join(job.source.moduleRoot, location.Filename), job.source.moduleRoot)
-	if !shifted || relFile == "" {
-		return false
-	}
-	if job.coverProfile.IsCoveredRelative(relFile, int(location.Line)) {
-		return true
-	}
-	return job.coverProfile.IsLineCoveredAnywhere(int(location.Line))
+	return shiftedLineCovered(job.coverProfile, shifted, relFile, int(location.Line))
 }
 
 // isPackageLevelDecl reports whether pos lies within a package-level
