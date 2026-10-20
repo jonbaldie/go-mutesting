@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.32] — 2026-10-20
+
+Ports the gate timeout change from quality-gates/mutago v2.10.34.
+
+### Fixed
+- The changed-code mutation gate (`scripts/check-change.sh`, used by pre-push and CI) now allows 120 seconds per test run instead of 30. Under `GOMAXPROCS=1` with a cold cache, the `internal/coverage` baseline could exceed 30 seconds and stop the gate with a tool error (quality-gates/mutago#239).
+
 ## [v2.10.31] — 2026-10-19
 
 Ports the paired-location change from quality-gates/mutago v2.10.33.
@@ -775,7 +782,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.31...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.32...HEAD
+[v2.10.32]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.31...v2.10.32
 [v2.10.31]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.30...v2.10.31
 [v2.10.30]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.29...v2.10.30
 [v2.10.29]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.28...v2.10.29
