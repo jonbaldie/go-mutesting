@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.33] — 2026-10-20
+
 Ports the clause condition coverage changes from quality-gates/mutago v2.10.32 and v2.10.35.
 
 ### Fixed
@@ -787,7 +789,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.32...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.33...HEAD
+[v2.10.33]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.32...v2.10.33
 [v2.10.32]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.31...v2.10.32
 [v2.10.31]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.30...v2.10.31
 [v2.10.30]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.29...v2.10.30
