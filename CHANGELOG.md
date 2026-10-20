@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+Ports the clause condition coverage changes from quality-gates/mutago v2.10.32 and v2.10.35.
+
+### Fixed
+- `--coverage` now runs mutations in a `switch`, type switch, or `select` clause head (its `case` or `default` keyword, condition, and colon) when the enclosing statement is covered. Go coverage profiles have no separate range for clause heads, so these mutations, including `select/case-remove`, `select/default-remove`, and the right-operand `expression/remove`, were reported as `NOT COVERED` (quality-gates/mutago#297, quality-gates/mutago#326).
+
 ## [v2.10.32] — 2026-10-20
 
 Ports the gate timeout change from quality-gates/mutago v2.10.34.
