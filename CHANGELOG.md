@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.34] — 2026-10-21
+
+Ports the target package load/type error guard from quality-gates/mutago v2.10.36.
+
 ### Fixed
 - Stop with a tool error (exit 3) and package diagnostics when target packages have load or type errors, rather than silently dropping type-dependent mutants (quality-gates/mutago#331).
 
@@ -792,7 +796,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.33...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.34...HEAD
+[v2.10.34]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.33...v2.10.34
 [v2.10.33]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.32...v2.10.33
 [v2.10.32]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.31...v2.10.32
 [v2.10.31]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.30...v2.10.31
