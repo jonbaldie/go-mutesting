@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+- Stop with a tool error (exit 3) and package diagnostics when target packages have load or type errors, rather than silently dropping type-dependent mutants (quality-gates/mutago#331).
+
 ## [v2.10.33] — 2026-10-20
 
 Ports the clause condition coverage changes from quality-gates/mutago v2.10.32 and v2.10.35.
