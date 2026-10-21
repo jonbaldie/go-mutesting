@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.35] — 2026-10-21
+
+Ports the Go 1.27.2 export data fix from quality-gates/mutago v2.10.37.
+
 ### Fixed
 - Load target packages under Go 1.27.2 and later. `golang.org/x/tools` is now v0.52.0, which reads export data version 5; v0.49.0 could not, so type-dependent mutants were lost. A new CI job runs go-mutesting on a stdlib-importing package under the latest Go 1.27.x (quality-gates/mutago#332).
 
@@ -799,7 +803,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.34...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.35...HEAD
+[v2.10.35]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.34...v2.10.35
 [v2.10.34]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.33...v2.10.34
 [v2.10.33]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.32...v2.10.33
 [v2.10.32]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.31...v2.10.32
