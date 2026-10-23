@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.36] — 2026-10-23
+
+Ports the completed-mutant accounting owner from quality-gates/mutago v2.10.38.
+
 ### Changed
 - Completed mutant results now have one owner inside the engine. Each outcome's count comes from its list, so the summary, quality gates, and per-mutator breakdown always describe the same mutants. Output and scores are unchanged (quality-gates/mutago#337).
 
@@ -806,7 +810,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.35...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.36...HEAD
+[v2.10.36]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.35...v2.10.36
 [v2.10.35]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.34...v2.10.35
 [v2.10.34]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.33...v2.10.34
 [v2.10.33]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.32...v2.10.33
