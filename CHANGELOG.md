@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+### Changed
+- Completed mutant results now have one owner inside the engine. Each outcome's count comes from its list, so the summary, quality gates, and per-mutator breakdown always describe the same mutants. Output and scores are unchanged (quality-gates/mutago#337).
+
 ## [v2.10.35] — 2026-10-21
 
 Ports the Go 1.27.2 export data fix from quality-gates/mutago v2.10.37.
