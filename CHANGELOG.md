@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.37] — 2026-10-26
+
+Ports the runner policy fix from quality-gates/mutago v2.10.40.
+
+### Fixed
+- Resolve the mutant runner once per run. Custom `--exec --coverage` now keeps `--test-flags`; unsupported `--per-test`, adaptive timeout, and unused test flags warn on stderr instead of disappearing silently (quality-gates/mutago#341).
+
 ## [v2.10.36] — 2026-10-23
 
 Ports the completed-mutant accounting owner from quality-gates/mutago v2.10.38.
@@ -810,7 +817,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.36...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.37...HEAD
+[v2.10.37]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.36...v2.10.37
 [v2.10.36]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.35...v2.10.36
 [v2.10.35]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.34...v2.10.35
 [v2.10.34]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.33...v2.10.34

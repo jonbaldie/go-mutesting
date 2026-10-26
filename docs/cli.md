@@ -16,9 +16,9 @@ You can run go-mutesting from outside the targets' module, such as from a parent
 
 | Flag | Default | Description |
 | :--- | :------ | :---------- |
-| `--exec` | (built-in) | Custom exec command for testing each mutation |
+| `--exec` | (built-in) | Custom exec command for testing each mutation; limited to one worker. Empty/whitespace-only commands use the built-in runner. |
 | `--exec-timeout` | `10` | Seconds to wait before killing the test process |
-| `--timeout-coefficient` | `0` (disabled) | Scale per-mutation timeout as a multiple of an uncached baseline test-suite run (e.g. `3` = 3× the clean run). The clean pre-flight/coverage run uses a generous cap so a suite slower than `--exec-timeout` can still be measured. Overrides `--exec-timeout` when set. |
+| `--timeout-coefficient` | `0` (disabled) | Scale per-mutation timeout as a multiple of an uncached baseline test-suite run (e.g. `3` = 3× the clean run). The clean pre-flight/coverage run uses a generous cap so a suite slower than `--exec-timeout` can still be measured. Overrides `--exec-timeout` when set for the built-in runner. With `--exec`, warns and is ignored; the script keeps `--exec-timeout`. |
 | `--workers` | all CPUs | Number of parallel mutation workers |
 | `--config` | — | Path to YAML config file |
 
@@ -55,8 +55,10 @@ You can run go-mutesting from outside the targets' module, such as from a parent
 | Flag | Description |
 | :--- | :---------- |
 | `--coverage` | Run `go test -coverprofile` first; stop with exit 3 if it fails, otherwise skip test execution for uncovered lines and exclude them from covered-MSI |
-| `--per-test` | Build a per-test coverage map and run only the tests that cover each mutation. Best for packages with slow tests. Pairs well with `--coverage`. With `--test-recursive`, the map also covers subpackage tests. If any test's coverage profile is missing or unreadable, go-mutesting runs the full suite instead. |
-| `--test-flags` | Extra flags passed to every `go test` call (e.g. `--test-flags=-short`). Use the `=` form for values starting with a dash. Adaptive timeout preserves a positive `-count=N`, adds `-count=1` when absent, and rejects `-count=0`. Ignored when `--exec` is set. |
+| `--per-test` | Build a per-test coverage map and run only the tests that cover each mutation. Best for packages with slow tests. Pairs well with `--coverage`. With `--test-recursive`, the map also covers subpackage tests. If any test's coverage profile is missing or unreadable, go-mutesting runs the full suite instead. With `--exec`, warns and is ignored. |
+| `--test-flags` | Extra flags passed to every `go test` call (e.g. `--test-flags=-short`). Use the `=` form for values starting with a dash. Adaptive timeout preserves a positive `-count=N`, adds `-count=1` when absent, and rejects `-count=0`. With `--exec --coverage`, flags still apply to coverage preparation, never to custom command arguments. Without coverage, unused flags produce a warning. |
+
+Custom-runner option warnings go to stderr once per run, even without `--verbose`, and do not alter structured reports. `--dry-run` and `--no-exec` do not prepare coverage, run scripts, or emit these execution-option warnings.
 
 ### Clause condition coverage
 

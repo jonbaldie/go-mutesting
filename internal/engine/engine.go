@@ -87,7 +87,7 @@ type mutatorItem struct {
 
 type execConfig struct {
 	numWorkers     int
-	execs          []string
+	runner         runnerPolicy
 	extraTestFlags []string
 	importPaths    *importPaths
 	// goDir is the directory go commands run in (see goWorkDir).
@@ -127,7 +127,7 @@ type execJob struct {
 	test           goTestTarget
 	mutant         models.Mutant
 	coverProfile   *coverage.Profile
-	execs          []string
+	runner         runnerPolicy
 	perTestProf    *coverage.PerTestProfile
 	extraTestFlags []string
 	tmpDir         string
@@ -265,13 +265,17 @@ type runSetup struct {
 
 func (e *Engine) validateAndInitRun(ctx context.Context, opts *models.Options, targets importing.ResolvedTargets) (*runSetup, error) {
 	mode := resolveRunMode(opts)
-	if err := validateAdaptiveTimeoutTestCount(opts, mode); err != nil {
+	runner, warnings := resolveRunner(opts, mode)
+	for _, warning := range warnings {
+		fmt.Fprintf(e.Stderr, "Warning: %s\n", warning)
+	}
+	if err := runner.validateTestCount(); err != nil {
 		return nil, err
 	}
-	return e.initRun(ctx, opts, mode, targets)
+	return e.initRun(ctx, opts, mode, runner, targets)
 }
 
-func (e *Engine) initRun(ctx context.Context, opts *models.Options, mode runMode, targets importing.ResolvedTargets) (*runSetup, error) {
+func (e *Engine) initRun(ctx context.Context, opts *models.Options, mode runMode, runner runnerPolicy, targets importing.ResolvedTargets) (*runSetup, error) {
 	files := targets.Files
 	if len(files) == 0 {
 		return nil, fmt.Errorf("Could not find any suitable Go source files")
@@ -287,8 +291,8 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, mode runMode
 		return nil, fmt.Errorf("Cannot load git diff: %w", err)
 	}
 
-	execs, extraTestFlags := parseExecFlags(opts)
-	goDir, err := loadTargetPackages(opts, mode, execs, files)
+	extraTestFlags := runner.testFlags
+	goDir, err := loadTargetPackages(runner, files)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +305,7 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, mode runMode
 	results := &completedResults{}
 	var reportMu sync.Mutex
 
-	numWorkers := calcNumWorkers(opts, execs)
+	numWorkers := runner.workers
 	console.Verbose(opts, "Running with %d parallel worker(s)", numWorkers)
 
 	tmpDir, err := createTmpDir(opts, mode)
@@ -330,7 +334,7 @@ func (e *Engine) initRun(ctx context.Context, opts *models.Options, mode runMode
 		tmpDir:   tmpDir,
 		exec: execConfig{
 			numWorkers:     numWorkers,
-			execs:          execs,
+			runner:         runner,
 			extraTestFlags: extraTestFlags,
 			importPaths:    newImportPaths(ctx, goDir, extraTestFlags),
 			goDir:          goDir,
@@ -438,8 +442,8 @@ func detectDefaultBranch() string {
 
 // loadTargetPackages resolves the directory the run's go commands start in and
 // loads the target packages from it.
-func loadTargetPackages(opts *models.Options, mode runMode, execs []string, files []string) (string, error) {
-	goDir, err := resolveGoDir(opts, mode, execs, files)
+func loadTargetPackages(runner runnerPolicy, files []string) (string, error) {
+	goDir, err := resolveGoDir(runner, files)
 	if err != nil {
 		return "", err
 	}
@@ -453,12 +457,12 @@ func loadTargetPackages(opts *models.Options, mode runMode, execs []string, file
 
 // resolveGoDir returns the directory the run's go commands start in. A target
 // outside any single module is an error only when go-mutesting itself runs go test.
-func resolveGoDir(opts *models.Options, mode runMode, execs []string, files []string) (string, error) {
+func resolveGoDir(runner runnerPolicy, files []string) (string, error) {
 	goDir, err := goWorkDir(currentGoEnv(), files)
 	if err == nil {
 		return goDir, nil
 	}
-	if runsGoTest(opts, mode, execs) {
+	if runner.goTest {
 		return "", fmt.Errorf("Cannot resolve the module of the targets: %w", err)
 	}
 	return "", nil
@@ -511,12 +515,12 @@ func mutateAll(r *mutationRun, pkgs []importing.Package, coverageProfiles []*cov
 }
 
 func configureAdaptiveTimeoutAndCoverage(opts *models.Options, pkgs []importing.Package, run *mutationRun) ([]*coverage.Profile, error) {
-	if opts.Exec.Coverage && run.exec.mode.executes() {
+	if run.exec.runner.coverage {
 		profiles, maxBaseline, err := prepareCoverageProfiles(run.ctx, opts, pkgs, run.exec, run.tmpDir, run.modulePath, run.report)
 		if err != nil {
 			return nil, err
 		}
-		if len(run.exec.execs) == 0 {
+		if run.exec.runner.adaptive {
 			applyAdaptiveTimeoutFromBaseline(opts, maxBaseline)
 		}
 		return profiles, nil
@@ -528,7 +532,7 @@ func prepareCoverageProfiles(ctx context.Context, opts *models.Options, pkgs []i
 	profiles := make([]*coverage.Profile, len(pkgs))
 	var maxBaseline time.Duration
 	for i, importPkg := range pkgs {
-		profile, elapsed, err := buildCoverageProfile(ctx, opts, ec.importPaths.forFiles(importPkg.Files), ec.goDir, tmpDir, modulePath, ec.extraTestFlags)
+		profile, elapsed, err := buildCoverageProfile(ctx, opts, ec.importPaths.forFiles(importPkg.Files), ec.goDir, tmpDir, modulePath, ec.extraTestFlags, ec.runner.adaptive)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -544,7 +548,7 @@ func prepareCoverageProfiles(ctx context.Context, opts *models.Options, pkgs []i
 }
 
 func perTestForPackage(r *mutationRun, importPkg importing.Package) (*coverage.PerTestProfile, error) {
-	if !r.opts.Exec.PerTest || !r.exec.mode.executes() || len(r.exec.execs) != 0 {
+	if !r.exec.runner.perTest {
 		return nil, nil
 	}
 	return buildPerTestCoverageProfile(r.ctx, r.stdout, r.opts, r.exec.importPaths.forFiles(importPkg.Files), r.modulePath, r.tmpDir, r.exec)
@@ -799,7 +803,7 @@ func queueMutation(r *mutationRun, jobs chan<- execJob, fc *fileContext, mutatio
 		test:           goTestTarget{pkg: fc.testPkg, dir: r.exec.goDir},
 		mutant:         prepared.mutant,
 		coverProfile:   fc.coverProfile,
-		execs:          r.exec.execs,
+		runner:         r.exec.runner,
 		perTestProf:    fc.perTestProf,
 		extraTestFlags: r.exec.extraTestFlags,
 		tmpDir:         r.tmpDir,
@@ -844,16 +848,6 @@ func printDryRunReport(stdout io.Writer, total int, totals map[string]int) {
 	fmt.Fprintln(stdout, "Note: this count uses the same scope as a real run (changed lines, blacklist, duplicate edits, and --run-mutant-id). It does not apply coverage.")
 }
 
-func parseExecFlags(opts *models.Options) (execs []string, extraTestFlags []string) {
-	if opts.Exec.Exec != "" {
-		execs = strings.Fields(opts.Exec.Exec)
-	}
-	if opts.Exec.TestFlags != "" && len(execs) == 0 {
-		extraTestFlags = strings.Fields(opts.Exec.TestFlags)
-	}
-	return
-}
-
 // runBaselineChecks runs `go test` once per package without any mutations
 // applied. A package whose baseline does not pass (including a build/compile
 // failure) is meaningless to mutate: `go test` exits 1 and mapTestExitToResult
@@ -868,18 +862,8 @@ func parseExecFlags(opts *models.Options) (execs []string, extraTestFlags []stri
 // no-op retained for backward compatibility, since the check is always on.
 // When --timeout-coefficient is set, the check uses a generous timeout, measures
 // the clean run, and sets the per-mutation timeout from that measurement.
-func skipBaselineChecks(opts *models.Options, mode runMode, execs []string) bool {
-	return opts.Exec.Coverage || !mode.executes() || len(execs) > 0
-}
-
-// runsGoTest reports whether the run builds and tests the targets with
-// `go test`: for the built-in runner, or for the --coverage profile.
-func runsGoTest(opts *models.Options, mode runMode, execs []string) bool {
-	return mode.executes() && (len(execs) == 0 || opts.Exec.Coverage)
-}
-
 func runBaselineChecks(ctx context.Context, stderr io.Writer, opts *models.Options, pkgs []importing.Package, ec execConfig) int {
-	if skipBaselineChecks(opts, ec.mode, ec.execs) {
+	if !ec.runner.baseline {
 		return 0 // returnOk
 	}
 	inv := goTestInvocation{
@@ -889,7 +873,7 @@ func runBaselineChecks(ctx context.Context, stderr io.Writer, opts *models.Optio
 		timeoutSeconds: opts.Exec.Timeout,
 		testFlags:      ec.extraTestFlags,
 	}
-	measureAdaptive := opts.Exec.TimeoutCoefficient > 0
+	measureAdaptive := ec.runner.adaptive
 	if measureAdaptive {
 		inv.timeoutSeconds = adaptiveBaselineTimeoutSeconds
 		inv.testFlags = uncachedTestFlags(ec.extraTestFlags)
@@ -956,7 +940,7 @@ func applyAdaptiveTimeoutFromBaseline(opts *models.Options, baseline time.Durati
 		baseline.Seconds(), opts.Exec.TimeoutCoefficient, derived)
 }
 
-func buildCoverageProfile(ctx context.Context, opts *models.Options, pkgPath string, goDir string, tmpDir string, modulePath string, extraTestFlags []string) (*coverage.Profile, time.Duration, error) {
+func buildCoverageProfile(ctx context.Context, opts *models.Options, pkgPath string, goDir string, tmpDir string, modulePath string, extraTestFlags []string, adaptive bool) (*coverage.Profile, time.Duration, error) {
 	if !opts.Exec.Coverage {
 		return nil, 0, nil
 	}
@@ -970,7 +954,7 @@ func buildCoverageProfile(ctx context.Context, opts *models.Options, pkgPath str
 	profilePath := filepath.Join(profileDir, "coverage.out")
 	coverageTestFlags := extraTestFlags
 	timeout := opts.Exec.Timeout
-	if opts.Exec.TimeoutCoefficient > 0 && strings.TrimSpace(opts.Exec.Exec) == "" {
+	if adaptive {
 		coverageTestFlags = uncachedTestFlags(extraTestFlags)
 		timeout = adaptiveBaselineTimeoutSeconds
 	}
@@ -995,11 +979,7 @@ func buildCoverageProfile(ctx context.Context, opts *models.Options, pkgPath str
 	return prof, elapsed, nil
 }
 
-func validateAdaptiveTimeoutTestCount(opts *models.Options, mode runMode) error {
-	if opts.Exec.TimeoutCoefficient <= 0 || !mode.executes() || strings.TrimSpace(opts.Exec.Exec) != "" {
-		return nil
-	}
-	testFlags := strings.Fields(opts.Exec.TestFlags)
+func validateAdaptiveTestCount(testFlags []string) error {
 	for i := range testFlags {
 		value, found := testCountValue(testFlags, i)
 		if !found {
@@ -1068,17 +1048,6 @@ func perTestUnavailable(ctx context.Context, opts *models.Options, pkgPath strin
 	}
 	console.Verbose(opts, "Per-test coverage unavailable for %q: %v", pkgPath, err)
 	return nil, nil
-}
-
-func calcNumWorkers(opts *models.Options, execs []string) int {
-	n := opts.General.Workers
-	if n <= 0 {
-		n = runtime.NumCPU()
-	}
-	if len(execs) > 0 {
-		n = 1
-	}
-	return n
 }
 
 func startWorkerPool(opts *models.Options, numWorkers int, results *completedResults, outMu *sync.Mutex, tmpDir string) (chan execJob, *sync.WaitGroup) {
@@ -1667,10 +1636,7 @@ func mutantLocation(opts *models.Options, mutant models.Mutant) string {
 }
 
 func mutateExec(job execJob, mutant *models.Mutant) int {
-	if len(job.execs) == 0 {
-		return runBuiltinExec(job, mutant)
-	}
-	return runCustomExec(job, mutant)
+	return job.runner.run(job, mutant)
 }
 
 func runBuiltinExec(job execJob, mutant *models.Mutant) int {
@@ -1797,7 +1763,7 @@ func runCustomExec(job execJob, mutant *models.Mutant) int {
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(opts.Exec.Timeout)*time.Second)
 		defer cancel()
 	}
-	execCommand := exec.CommandContext(ctx, job.execs[0], job.execs[1:]...)
+	execCommand := exec.CommandContext(ctx, job.runner.command[0], job.runner.command[1:]...)
 	execCommand.Stderr = job.out.stderr
 	execCommand.Stdout = job.out.stdout
 	execCommand.Env = append(os.Environ(), []string{
