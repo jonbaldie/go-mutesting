@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+### Changed
+- Mutant status lines, diffs, and the progress line now go through one run listener. The engine's status lines go to its own stdout, not the process's. `INTERNAL ERROR` lines now follow the `x` status filter and end with a frame line, like other errored mutants (quality-gates/mutago#261).
+
 ## [v2.10.36] — 2026-10-23
 
 Ports the completed-mutant accounting owner from quality-gates/mutago v2.10.38.
