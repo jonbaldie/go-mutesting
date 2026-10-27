@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.40] — 2026-10-27
+
+Replicates quality-gates/mutago v2.10.39. The v2.10.38 accounting change and the v2.10.40 runner fix already shipped in v2.10.36 and v2.10.37. This release brings the tree in line with mutago v2.10.40.
+
+### Changed
+- Mutant status lines, diffs, and the progress line now go through one run listener. The engine's status lines go to its own stdout, not the process's. `INTERNAL ERROR` lines now follow the `x` status filter and end with a frame line, like other errored mutants (quality-gates/mutago#261).
+
 ## [v2.10.37] — 2026-10-26
 
 Ports the runner policy fix from quality-gates/mutago v2.10.40.
@@ -817,7 +824,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.37...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.40...HEAD
+[v2.10.40]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.37...v2.10.40
 [v2.10.37]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.36...v2.10.37
 [v2.10.36]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.35...v2.10.36
 [v2.10.35]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.34...v2.10.35
