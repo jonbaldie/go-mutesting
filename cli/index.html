@@ -968,7 +968,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>--run-mutant-id</code></td>
-<td style="text-align: left;">Run only the mutant with this stable ID (copy the <code>id</code> field from <code>go-mutesting-agentic.json</code>). Other mutants are not classified or counted. <code>--dry-run</code> counts only this mutant. Exits 3 if no matching mutant is found. Valid-ID runs suppress the summary and quality gates.</td>
+<td style="text-align: left;">Run only the mutant with this stable ID (copy the <code>id</code> field from <code>go-mutesting-agentic.json</code>). Other mutants are not classified or counted. <code>--dry-run</code> counts only this mutant. Exits 3 if no matching mutant is found or execution errors. Valid-ID runs suppress the summary and quality gates.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--version</code>, <code>-v</code></td>
@@ -1008,6 +1008,7 @@
 </tr>
 </tbody>
 </table>
+<p>MSI is killed mutants divided by all mutants. Skipped and errored mutants count in the total but not as kills. Covered MSI excludes not-covered mutants from the total.</p>
 <h2 id="coverage">Coverage<a class="headerlink" href="#coverage" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1085,7 +1086,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>--update-baseline</code></td>
-<td style="text-align: left;">Record current survivors and exit 0</td>
+<td style="text-align: left;">Record current survivors and exit 0; leave the baseline unchanged and exit 3 if any mutant errors</td>
 </tr>
 </tbody>
 </table>
@@ -1104,7 +1105,7 @@
 </tr>
 <tr>
 <td style="text-align: left;">3</td>
-<td style="text-align: left;">Invalid input or tool failure, including a failed clean coverage run, or targets that are not in one Go module</td>
+<td style="text-align: left;">Invalid input or tool failure, including a failed clean coverage run, any errored mutant, or targets that are not in one Go module</td>
 </tr>
 <tr>
 <td style="text-align: left;">4</td>
@@ -1114,6 +1115,7 @@
 </table>
 <h2 id="related-project-report">Related project report<a class="headerlink" href="#related-project-report" title="Permanent link">&para;</a></h2>
 <p><a href="https://github.com/quality-gates/mutago/blob/main/docs/exploratory-testing/2026-09-26-cli-afk/README.md">A CLI exploratory-testing report for mutago</a> documents coverage, per-test filtering, diff scoping, report output, and quality-gate workflows. That run tested <code>mutago</code>; it is a related-project reference, not a verification report for <code>go-mutesting</code>.</p>
+<p><a href="https://github.com/quality-gates/mutago/blob/main/docs/exploratory-testing/2026-11-02-cli/README.md">A later mutago CLI testing pass</a> records custom executors and score gates. Its evidence also covers mutago, not go-mutesting.</p>
 
 
 
