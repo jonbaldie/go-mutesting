@@ -11,7 +11,7 @@ description: Verify that recursive per-test profiling keeps each covering packag
 
 ## Coverage and sync
 
-Last matched to commit `ba3d0680f4bacecba3bf1bfda4668ba30bc1c7cc`:
+Last matched to commit `b3da4f3188d40c531e172512bffc02a2023d3fbc`:
 
 | Code | What to compare to the checks |
 | --- | --- |
@@ -23,7 +23,7 @@ Last matched to commit `ba3d0680f4bacecba3bf1bfda4668ba30bc1c7cc`:
 From the repo root, inspect covered changes since that commit, including the working tree:
 
 ```sh
-git diff ba3d0680f4bacecba3bf1bfda4668ba30bc1c7cc -- internal/coverage/coverage.go internal/engine/engine.go internal/engine/gotest.go internal/engine/runner.go internal/models/options.go
+git diff b3da4f3188d40c531e172512bffc02a2023d3fbc -- internal/coverage/coverage.go internal/engine/engine.go internal/engine/gotest.go internal/engine/runner.go internal/models/options.go
 ```
 
 If the commit is unavailable, inspect all covered code. Read changed functions and compare them with `probe_test.go`, `fallback_probe_test.go`, and the CLI fixture in `check.sh`, including the order of compilation and test execution. If the implementation changes, update the checks to exercise its actual behavior; don't preserve an obsolete naming rule. Advance the sync commit only after confirming the checks still describe the code at the new commit.
