@@ -1,0 +1,58 @@
+---
+name: verify-per-test-package-identity
+description: Verify that recursive per-test profiling keeps each covering package's test eligible for a mutant. Use when changing per-test package discovery, temporary binary paths, profile collection, or mutant test selection.
+---
+
+# Verify per-test package identity
+
+**Property:** For the checked recursive runs, each test that covers a mutant's line remains eligible for that mutant, or profiling falls back to the full test suite.
+
+**Harm:** If a covering test disappears from a valid-looking map, a mutant the full suite kills can be reported as escaped.
+
+## Coverage and sync
+
+Last matched to the fork fix whose commit subject starts `fix(coverage): preserve recursive per-test package identity`:
+
+| Code | What to compare to the checks |
+| --- | --- |
+| `internal/coverage/coverage.go`: `ListTestPackages`, `BuildPerTestProfileForPackages`, `compileCoverageTestBinary`, `profileTests`, `runPerTestWorker`, `mergePerTestProfiles`, `parsePerTestProfile`, `applyPerTestResult`, `PerTestProfile.CoveringTests` and `CoveringTestsRelative` | Which packages and tests are profiled, how each binary and profile is named, whether jobs can observe a different package's binary, and whether incomplete profiles are rejected. |
+| `internal/engine/engine.go`: `perTestForPackage`, `buildPerTestCoverageProfile`, `perTestUnavailable`, `runGoTest`, `perTestRunFilter` | The full-suite fallback and the filter passed to the mutant's `go test` invocation. |
+| `internal/engine/gotest.go`: `goTestInvocation`, `perTestToolchain` | Compilation and individual-test commands and their package, binary, test name, and coverage profile arguments. |
+| `internal/engine/runner.go`: `resolveRunner`; `internal/models/options.go`: `PerTest` | When the built-in runner enables per-test selection. |
+
+From the repo root, find that commit and inspect covered changes since it, including the working tree:
+
+```sh
+baseline=$(git log --format='%H %s' | awk '$0 ~ /^[0-9a-f]+ fix\(coverage\): preserve recursive per-test package identity/ && !found {print $1; found=1}')
+if [ -n "$baseline" ]; then
+  git diff "$baseline" -- internal/coverage/coverage.go internal/engine/engine.go internal/engine/gotest.go internal/engine/runner.go internal/models/options.go
+else
+  echo 'Baseline commit unavailable; inspect all covered code.'
+fi
+```
+
+If the commit is unavailable, inspect all covered code. Read changed functions and compare them with `probe_test.go`, `fallback_probe_test.go`, and the CLI fixture in `check.sh`, including the order of compilation and test execution. If the implementation changes, update the checks to exercise its actual behavior; don't preserve an obsolete naming rule. Advance the baseline only after confirming the checks still describe the code at the new commit; use the same subject prefix for that commit.
+
+## Run and interpret
+
+From the repo root:
+
+```sh
+./.agents/skills/verify-per-test-package-identity/check.sh
+```
+
+The check needs Bash, Python 3, `sh`, Git, standard Unix tools including `cmp`, and the Go toolchain required by `go.mod` (last run with Go 1.26.6 on macOS). Go dependencies must already be available or downloadable. It uses temporary files and Go test overlays; it does not edit production files. Exit 0 means all checks passed, 1 reports a property violation, and 2 reports a setup or unexpected-result failure. When a prior probe found a violation but a later step cannot complete, the command reports both facts and exits 1.
+
+The first check exhausts all 240 ordered pairs of distinct package paths formed by two segments from `a`, `b`, `a_a`, and `a_b`. It calls the real `BuildPerTestProfileForPackages` with one worker. Its controlled toolchain records a package in each compiled-binary path and writes a valid profile: both tests cover the same line if they run against their own package's binary. A complete map must include both names; an error or nil map is safe because the engine uses the full suite. The toolchain first checks its own commands, and the real coverage code must produce a complete profile for a disjoint-package control pair.
+
+The second check calls the real engine's fallback and run-filter functions. An unavailable or empty profile must not restrict the test suite. Compare their callers too when the code changes; the probe does not follow every caller automatically.
+
+The third check builds the actual CLI and runs it in a temporary module. `a/b_c` has a test that kills return mutants, and `a_b/c` has an observer that covers the same line. The full recursive suite must kill the target mutants; the recursive `--per-test` run must kill the same ones. This checks the controlled toolchain against real compiled Go test binaries.
+
+Before the fix for [upstream issue #365](https://github.com/quality-gates/mutago/issues/365), `a/b_c` and `a_b/c` compiled to the same temporary binary path. The second compilation replaced the first, then a valid empty profile hid the missing killer. The CLI reported the mutant escaped even though the full suite killed it. The checked fix gives each package its own directory.
+
+For any failure, confirm the control ran and replay the affected package paths through the current code. A probe setup error or an outdated controlled toolchain is not evidence of a product bug. To check sensitivity, use a disposable worktree. Confirm the unmodified checks pass. Change the package binary directory to `filepath.Join(buildDir, strconv.Itoa(i-i))` and confirm the generated cases and CLI fail. Restore the source, change `perTestRunFilter` so an absent profile returns a nonempty filter, and confirm the fallback probe fails. Discard the scratch changes and rerun against the original code.
+
+## Boundaries
+
+This is bounded exhaustive input checking against real Go code, not a proof over all import paths or all package sets. No direct Go verifier is configured for this unannotated code. The generated cases use exactly two packages, one distinct test name per package, one covered line, and one worker; the CLI case uses three real packages and the return mutator. The controlled commands model binary ownership and valid profiles, not the Go compiler. The checks do not cover every test flag, operating system, concurrent worker schedule, duplicated test name, or differences between a test's standalone coverage and its behavior in the full suite. A pass says only that the checked cases preserved eligibility or safely fell back.
