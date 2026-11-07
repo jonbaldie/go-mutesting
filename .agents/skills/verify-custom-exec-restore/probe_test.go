@@ -1,0 +1,180 @@
+package engine
+
+import (
+	"context"
+	"encoding/json"
+	"go/types"
+	"io"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/jonbaldie/go-mutesting/v2/internal/models"
+)
+
+func TestCustomExecRestoresSource(t *testing.T) {
+	root := os.Getenv("GOMUTESTING_VERIFY_ROOT")
+	if root == "" {
+		t.Fatal("GOMUTESTING_VERIFY_ROOT is not set")
+	}
+	for _, script := range []string{"test-mutated-package.sh", "test-current-directory.sh"} {
+		for _, scenario := range []string{"normal", "cancel", "timeout"} {
+			t.Run(script+"/"+scenario, func(t *testing.T) {
+				probeCustomExec(t, root, script, scenario)
+			})
+		}
+	}
+}
+
+func probeCustomExec(t *testing.T, root, script, scenario string) {
+	t.Helper()
+	dir := t.TempDir()
+	original := filepath.Join(dir, "source.go")
+	mutant := filepath.Join(dir, "mutant.go")
+	want := []byte("package sample\nvar n = 1\n")
+	changed := []byte("package sample\nvar n = 2\n")
+	for path, data := range map[string][]byte{original: want, mutant: changed} {
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	started := filepath.Join(dir, "started")
+	release := filepath.Join(dir, "release")
+	finished := filepath.Join(dir, "finished")
+	overlayFile := filepath.Join(dir, "overlay.json")
+	shellPID := filepath.Join(dir, "shell-pid")
+	fakeGo := "#!/bin/sh\n" +
+		"found=\nwhile [ $# -gt 0 ]; do\n" +
+		"  if [ \"$1\" = -overlay ]; then\n" +
+		"    shift; cat \"$1\" > \"$GOMUTESTING_PROBE_OVERLAY\" || exit 3; found=yes; break\n" +
+		"  fi\n  shift\ndone\n" +
+		"[ \"$found\" = yes ] || exit 3\n" +
+		": > \"$GOMUTESTING_PROBE_STARTED\"\n" +
+		"while [ ! -e \"$GOMUTESTING_PROBE_RELEASE\" ]; do sleep 0.02; done\n" +
+		": > \"$GOMUTESTING_PROBE_FINISHED\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "go"), []byte(fakeGo), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GOMUTESTING_PROBE_STARTED", started)
+	t.Setenv("GOMUTESTING_PROBE_RELEASE", release)
+	t.Setenv("GOMUTESTING_PROBE_FINISHED", finished)
+	t.Setenv("GOMUTESTING_PROBE_OVERLAY", overlayFile)
+	t.Setenv("GOMUTESTING_PROBE_SHELL_PID", shellPID)
+	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0600) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	opts := &models.Options{}
+	opts.Exec.Timeout = 30
+	if scenario == "timeout" {
+		opts.Exec.Timeout = 1
+	}
+	stdout, stderr := synchronizedWriters(io.Discard, io.Discard)
+	job := execJob{
+		ctx: ctx, opts: opts, pkg: types.NewPackage("sample", "sample"),
+		runner: runnerPolicy{command: []string{"bash", "-c", `echo "$$" > "$GOMUTESTING_PROBE_SHELL_PID"; exec bash "$1"`, "probe", filepath.Join(root, "scripts", "exec", script)}},
+		out:    jobOutput{stdout: stdout, stderr: stderr},
+		source: mutationSource{originalFile: original, mutationFile: mutant},
+	}
+	done := make(chan int, 1)
+	go func() { done <- runCustomExec(job, &models.Mutant{}) }()
+	waitForProbeFile(t, started)
+	assertProbeFile(t, original, want, "source changed while the test was running")
+	var overlay struct {
+		Replace map[string]string
+	}
+	data, err := os.ReadFile(overlayFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &overlay); err != nil {
+		t.Fatalf("the test did not receive a valid overlay: %v", err)
+	}
+	physicalDir, err := filepath.EvalSymlinks(filepath.Dir(original))
+	if err != nil {
+		t.Fatal(err)
+	}
+	physicalSource := filepath.Join(physicalDir, filepath.Base(original))
+	if overlay.Replace[physicalSource] != mutant {
+		t.Fatalf("the test did not receive the mutant overlay: %v", overlay.Replace)
+	}
+	for path, replacement := range overlay.Replace {
+		if replacement != mutant {
+			t.Errorf("overlay replacement for %q is %q; want %q", path, replacement, mutant)
+		}
+	}
+
+	if scenario == "cancel" {
+		cancel()
+	}
+	if scenario != "normal" {
+		// Go may wait for the test child to close inherited pipes.
+		waitUpToThreeSecondsForScriptExit(t, shellPID)
+	}
+	if err := os.WriteFile(release, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var code int
+	select {
+	case code = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runCustomExec did not return")
+	}
+	if scenario != "normal" && code != 3 {
+		t.Errorf("%s exec returned %d; want tool error 3", scenario, code)
+	}
+	if scenario == "normal" && code != 1 {
+		t.Errorf("passing fake go test returned %d; want escaped 1", code)
+	}
+	if err := os.WriteFile(release, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	waitForProbeFile(t, finished)
+	assertProbeFile(t, original, want, "source changed after "+scenario)
+}
+
+func waitForProbeFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", filepath.Base(path))
+}
+
+func waitUpToThreeSecondsForScriptExit(t *testing.T, path string) {
+	t.Helper()
+	waitForProbeFile(t, path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := syscall.Kill(pid, 0); err == syscall.ESRCH {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func assertProbeFile(t *testing.T, path string, want []byte, context string) {
+	t.Helper()
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != string(want) {
+		backup, backupErr := os.ReadFile(path + ".tmp")
+		t.Errorf("%s: file=%q err=%v; backup=%q backupErr=%v", context, got, err, backup, backupErr)
+	}
+}
