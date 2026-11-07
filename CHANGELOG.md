@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.42] — 2026-11-07
+
+### Changed
+- Remove unused AST mutation helpers, matching quality-gates/mutago #363.
+
 ## [v2.10.41] — 2026-11-07
 
 Syncs the custom executor and score fixes from quality-gates/mutago #362 and its formal verification skill from #359.
@@ -832,7 +837,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.41...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.42...HEAD
+[v2.10.42]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.41...v2.10.42
 [v2.10.41]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.40...v2.10.41
 [v2.10.40]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.37...v2.10.40
 [v2.10.37]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.36...v2.10.37
