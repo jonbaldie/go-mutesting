@@ -33,7 +33,11 @@ printf 'mode: set\nexample.test/verify/target.go:4.1,4.9 1 %s\n' "$hit" > "$3"`
 	return exec.Command("sh", "-c", run, "run", binary, tc.owners[name], profile)
 }
 
-func profilePair(dir, first, second string) (*PerTestProfile, error) {
+func profilePair(t *testing.T, dir, first, second string) (*PerTestProfile, error) {
+	t.Helper()
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatalf("probe setup: create pair directory: %v", err)
+	}
 	owners := map[string]string{"TestFirst": first, "TestSecond": second}
 	pkgs := []TestPackage{
 		{ImportPath: first, Tests: []string{"TestFirst"}},
@@ -69,11 +73,12 @@ func checkToolchain(t *testing.T, root string) {
 func TestGeneratedPackageIdentity(t *testing.T) {
 	root := t.TempDir()
 	checkToolchain(t, root)
-	control, err := profilePair(filepath.Join(root, "control"), probeModule+"/plain/one", probeModule+"/plain/two")
-	if err == nil && control != nil {
-		if got := control.CoveringTestsRelative("target.go", 4); !slices.Contains(got, "TestFirst") || !slices.Contains(got, "TestSecond") {
-			t.Errorf("incomplete profiles; first: disjoint packages returned covering tests %v; both tests cover the line", got)
-		}
+	control, err := profilePair(t, filepath.Join(root, "control"), probeModule+"/plain/one", probeModule+"/plain/two")
+	if err != nil || control == nil {
+		t.Fatalf("probe setup: disjoint control did not produce a profile: %v", err)
+	}
+	if got := control.CoveringTestsRelative("target.go", 4); !slices.Contains(got, "TestFirst") || !slices.Contains(got, "TestSecond") {
+		t.Errorf("incomplete profiles; first: disjoint packages returned covering tests %v; both tests cover the line", got)
 	}
 
 	// All ordered pairs of distinct two-segment package paths drawn from this
@@ -95,7 +100,7 @@ func TestGeneratedPackageIdentity(t *testing.T) {
 			}
 			checked++
 			dir := filepath.Join(root, fmt.Sprintf("pair-%03d", checked))
-			profile, err := profilePair(dir, first, second)
+			profile, err := profilePair(t, dir, first, second)
 			if err != nil || profile == nil {
 				fallback++
 			} else {

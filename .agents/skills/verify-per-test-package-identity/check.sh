@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-trap 'echo "SETUP ERROR: a required command failed." >&2; exit 2' ERR
+finding=0
+setup_error() {
+    if [ "$finding" -ne 0 ]; then
+        echo "FINDING: $1 An earlier property violation remains; verification is incomplete." >&2
+        exit 1
+    fi
+    echo "SETUP ERROR: $1" >&2
+    exit 2
+}
+trap 'setup_error "A required command failed."' ERR
 
 skill_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 repo=$(git -C "$skill_dir" rev-parse --show-toplevel)
@@ -23,15 +32,9 @@ with open(os.path.join(scratch, "overlay.json"), "w", encoding="utf-8") as f:
     json.dump(overlay, f)
 PY
 
-finding=0
 incomplete_cli() {
     cat "$1"
-    if [ "$finding" -ne 0 ]; then
-        echo "FINDING: $2 The earlier property violation remains; the CLI comparison is incomplete." >&2
-        exit 1
-    fi
-    echo "SETUP ERROR: $2" >&2
-    exit 2
+    setup_error "$2"
 }
 
 echo 'Checking generated package pairs against the real coverage code...'
@@ -40,8 +43,7 @@ if (cd "$repo" && GOMAXPROCS=1 go test -count=1 -overlay "$scratch/overlay.json"
     cat "$scratch/probe.log"
     if ! grep -q '^--- PASS: TestGeneratedPackageIdentity ' "$scratch/probe.log" ||
         ! grep -q 'checked 240 ordered pairs;' "$scratch/probe.log"; then
-        echo 'SETUP ERROR: the generated-input probe did not run all cases.' >&2
-        exit 2
+        setup_error 'The generated-input probe did not run all cases.'
     fi
 elif grep -q 'incomplete profiles; first:' "$scratch/probe.log" &&
     grep -q '^--- FAIL: TestGeneratedPackageIdentity ' "$scratch/probe.log" &&
@@ -50,8 +52,7 @@ elif grep -q 'incomplete profiles; first:' "$scratch/probe.log" &&
     finding=1
 else
     cat "$scratch/probe.log"
-    echo 'SETUP ERROR: the generated-input probe did not complete.' >&2
-    exit 2
+    setup_error 'The generated-input probe did not complete.'
 fi
 
 echo 'Checking that the engine does not filter a missing profile...'
@@ -59,8 +60,7 @@ if (cd "$repo" && GOMAXPROCS=1 go test -count=1 -overlay "$scratch/overlay.json"
     -run '^TestPerTestFallbackLeavesSuiteUnfiltered$' -v ./internal/engine) >"$scratch/fallback.log" 2>&1; then
     cat "$scratch/fallback.log"
     if ! grep -q '^--- PASS: TestPerTestFallbackLeavesSuiteUnfiltered ' "$scratch/fallback.log"; then
-        echo 'SETUP ERROR: the fallback probe did not run.' >&2
-        exit 2
+        setup_error 'The fallback probe did not run.'
     fi
 elif grep -q 'fallback property violation:' "$scratch/fallback.log" &&
     grep -q '^--- FAIL: TestPerTestFallbackLeavesSuiteUnfiltered ' "$scratch/fallback.log"; then
@@ -68,14 +68,12 @@ elif grep -q 'fallback property violation:' "$scratch/fallback.log" &&
     finding=1
 else
     cat "$scratch/fallback.log"
-    echo 'SETUP ERROR: the fallback probe did not complete.' >&2
-    exit 2
+    setup_error 'The fallback probe did not complete.'
 fi
 
 echo 'Building the CLI for the end-to-end check...'
 if ! (cd "$repo" && GOMAXPROCS=1 go build -o "$scratch/go-mutesting" ./cmd/go-mutesting); then
-    echo 'SETUP ERROR: the CLI did not build.' >&2
-    exit 2
+    setup_error 'The CLI did not build.'
 fi
 
 fixture="$scratch/fixture"
@@ -138,19 +136,21 @@ if ! (cd "$fixture" && GOMAXPROCS=1 "$scratch/go-mutesting" --workers=1 --exec-t
     --no-diffs --coverage --test-recursive --config=mutesting.yml .) >"$scratch/full.log" 2>&1; then
     incomplete_cli "$scratch/full.log" 'The full-suite control did not complete.'
 fi
-if ! grep -q '1 killed, 0 escaped, 0 errored' "$scratch/full.log"; then
-    incomplete_cli "$scratch/full.log" 'The full-suite control did not kill exactly one mutant.'
+if ! grep -q '^KILLED target\.go:' "$scratch/full.log" || grep -q '^ESCAPED ' "$scratch/full.log"; then
+    incomplete_cli "$scratch/full.log" 'The full-suite control did not kill the target mutants.'
 fi
+grep '^KILLED target\.go:' "$scratch/full.log" | LC_ALL=C sort >"$scratch/full-killed.log"
 if ! (cd "$fixture" && GOMAXPROCS=1 "$scratch/go-mutesting" --workers=1 --exec-timeout=30 \
     --no-diffs --coverage --test-recursive --config=mutesting.yml --per-test .) >"$scratch/per-test.log" 2>&1; then
     incomplete_cli "$scratch/per-test.log" 'The per-test run did not complete.'
 fi
-if grep -q '1 killed, 0 escaped, 0 errored' "$scratch/per-test.log"; then
-    echo 'CLI control: both runs killed the mutant.'
-elif grep -q '0 killed, 1 escaped, 0 errored' "$scratch/per-test.log"; then
+if grep -q '^ESCAPED target\.go:' "$scratch/per-test.log"; then
     cat "$scratch/per-test.log"
     echo 'FINDING: per-test selection let a mutant escape that the full suite killed.' >&2
     finding=1
+elif grep '^KILLED target\.go:' "$scratch/per-test.log" | LC_ALL=C sort >"$scratch/per-test-killed.log" &&
+    cmp -s "$scratch/full-killed.log" "$scratch/per-test-killed.log"; then
+    echo 'CLI control: both runs killed the same target mutants.'
 else
     incomplete_cli "$scratch/per-test.log" 'The per-test run produced an unexpected result.'
 fi
