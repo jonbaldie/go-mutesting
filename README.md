@@ -137,11 +137,13 @@ go-mutesting parse.go example/ github.com/jonbaldie/go-mutesting/v2/mutator/...
 
 Every mutation has to be tested using an [exec command](#write-mutation-exec-commands). By default the built-in exec command is used, which tests a mutation using the following steps:
 
-- Replace the original file with the mutation.
+- Use a Go overlay to compile the mutation in place of the original file.
 - Execute all tests of the package of the mutated file, with `go vet` disabled (`-vet=off`) so a vet diagnostic on mutated code is not miscounted as a kill. Pass your own `-vet` via `--test-flags` to re-enable it. The run uses `-failfast`, so no new tests start after the first failure.
 - Report if the mutation was killed.
 
 Alternatively the `--exec` argument can be used to invoke an external exec command. Empty or whitespace-only commands select the built-in runner. Custom commands run with one worker and keep `--exec-timeout` as their timeout. With `--exec`, `--per-test` and a positive `--timeout-coefficient` are ignored with warnings on stderr, even without `--verbose`. `--test-flags` still applies to Go coverage preparation under `--exec --coverage`, but is never appended to script arguments; without coverage, unused test flags produce a warning. The [/scripts/exec](/scripts/exec) directory holds basic exec commands for Go projects. The [test-mutated-package.sh](/scripts/exec/test-mutated-package.sh) script implements all steps and almost all features of the built-in exec command. It can be for example used to test the [github.com/jonbaldie/go-mutesting/v2/example](/example) package.
+
+The bundled scripts use a Go overlay and leave the source file and any existing `.tmp` backup unchanged, even if the script times out or is cancelled. Tests that read the source file from disk see the original, while compiled Go code sees the mutation. Keep `overlay.sh` beside either script when copying it. Other custom commands are responsible for their own file changes.
 
 ```bash
 go-mutesting --exec "$GOPATH/src/github.com/jonbaldie/go-mutesting/scripts/exec/test-mutated-package.sh" github.com/jonbaldie/go-mutesting/v2/example
@@ -186,6 +188,8 @@ The covered-code mutation score is 0.00%
 The output shows eight mutations. Six were killed (tests detected the mutation — shown as `KILLED`). Two escaped (tests didn't catch them — shown as `ESCAPED`), and their diffs are printed so you can write a test to cover the gap.
 
 The summary shows the **mutation score** (MSI): killed / total. For the example above, 6/8 = 75.00%. A score of 100% means every mutation was caught.
+
+Skipped and errored mutants count toward the total but not as kills. Covered-code MSI uses the same calculation after excluding not-covered mutants.
 
 ### <a name="black-list-false-positives"></a>Blacklist false positives
 
@@ -264,6 +268,8 @@ The filter prevents mutations in make() arguments for slices, maps, and channels
 
 Use `--min-msi` and `--min-covered-msi` to fail CI if mutation scores drop below a threshold. The tool exits with code 4 when a gate isn't met.
 
+If any mutant cannot be tested because execution errors, go-mutesting exits with code 3 even when a score gate passes. It still writes requested reports, but `--update-baseline` leaves the baseline unchanged.
+
 ```bash
 go-mutesting --min-msi 60 --min-covered-msi 80 ./...
 ```
@@ -327,7 +333,7 @@ Commit `go-mutesting-baseline.json` to your repo. The baseline uses stable mutan
 go-mutesting --logger-agentic-json --quiet ./...
 ```
 
-Use `--run-mutant-id` to re-run a single mutant by its stable ID (copy the `id` field from `go-mutesting-agentic.json`). Other mutants are not classified or counted, and `--dry-run` counts only that mutant. Useful for iterating on a specific test gap without waiting for the full suite. A missing ID is reported as a tool error and exits with code 3; valid-ID runs suppress the summary and quality gates.
+Use `--run-mutant-id` to re-run a single mutant by its stable ID (copy the `id` field from `go-mutesting-agentic.json`). Other mutants are not classified or counted, and `--dry-run` counts only that mutant. Useful for iterating on a specific test gap without waiting for the full suite. A missing ID or execution error exits with code 3; valid-ID runs suppress the summary and quality gates.
 
 ### <a name="progress"></a>Live progress
 
@@ -395,7 +401,7 @@ differ from `originalStartLine`. IDs are unchanged. See
 
 #### `--logger-summary-json`
 
-Writes `go-mutesting-summary.json` after each run. Useful for badges, dashboards, and downstream scripts.
+Writes `go-mutesting-summary.json` after each run. Useful for badges, dashboards, and downstream scripts. This example assumes coverage was enabled.
 
 ```json
 {
@@ -406,7 +412,7 @@ Writes `go-mutesting-summary.json` after each run. Useful for badges, dashboards
   "skippedCount": 2,
   "notCoveredCount": 0,
   "msi": 0.8333,
-  "coveredCodeMsi": 0.9211
+  "coveredCodeMsi": 0.8333
 }
 ```
 
@@ -415,8 +421,8 @@ Writes `go-mutesting-summary.json` after each run. Useful for badges, dashboards
 | `totalMutantsCount` | int | Total mutations generated |
 | `killedCount` | int | Mutations caught by tests |
 | `escapedCount` | int | Mutations not caught (test gaps) |
-| `errorCount` | int | Mutations that caused a build or test error |
-| `skippedCount` | int | Mutations skipped (blacklisted or annotated) |
+| `errorCount` | int | Mutations that could not be classified because execution failed |
+| `skippedCount` | int | Mutations skipped, including uncompilable mutants |
 | `notCoveredCount` | int | Mutations on lines with no coverage (requires `--coverage`) |
 | `msi` | float | Mutation Score Indicator: killed / total, range 0–1 |
 | `coveredCodeMsi` | float | MSI restricted to covered lines, range 0–1 |

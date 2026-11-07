@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.41] — 2026-11-07
+
+Syncs the custom executor and score fixes from quality-gates/mutago #362 and its formal verification skill from #359.
+
+### Fixed
+- Bundled custom executor scripts use Go overlays, preserving source and existing backups if execution times out or is cancelled.
+- Count only killed mutants as kills. Errored runs exit 3, keep existing baselines, and report errors separately for each mutator.
+
 ## [v2.10.40] — 2026-10-27
 
 Replicates quality-gates/mutago v2.10.39. The v2.10.38 accounting change and the v2.10.40 runner fix already shipped in v2.10.36 and v2.10.37. This release brings the tree in line with mutago v2.10.40.
@@ -824,7 +832,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.40...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.41...HEAD
+[v2.10.41]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.40...v2.10.41
 [v2.10.40]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.37...v2.10.40
 [v2.10.37]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.36...v2.10.37
 [v2.10.36]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.35...v2.10.36
