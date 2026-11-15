@@ -1,0 +1,17 @@
+go-mutesting state-machine verification
+Candidate: 80d6b5c
+
+Full test suite: go test ./... passed
+ok  	github.com/jonbaldie/go-mutesting/v2/cmd/go-mutesting	205.914s
+ok  	github.com/jonbaldie/go-mutesting/v2/internal/coverage	22.157s
+ok  	github.com/jonbaldie/go-mutesting/v2/internal/engine	(cached)
+ok  	github.com/jonbaldie/go-mutesting/v2/internal/gitdiff	1.859s
+ok  	github.com/jonbaldie/go-mutesting/v2/internal/parser	5.842s
+
+Changed-code mutation gate: passed
+The mutation score is 91.94% (57 killed, 4 escaped, 0 errored, 1 not covered, 0 skipped, 62 total)
+The covered-code mutation score is 93.44%
+
+All subsystem verification scripts passed on the combined tree.
+Independent Terra review mapped all 15 inventory categories.
+Models are bounded; shutdown liveness is not proven.
