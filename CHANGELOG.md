@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+Ports the state-machine and verification work from quality-gates/mutago #370.
+
+### Changed
+- Make mutation-run lifecycles, input parsing, coverage collection, and cache ownership more explicit, and add bounded verification skills for their state transitions.
+
+### Fixed
+- Keep annotation exclusions scoped to their source file so unrelated files cannot suppress mutations.
+- Prevent a package load started before a cache clear from repopulating the cleared cache.
+
 ## [v2.10.43] — 2026-11-07
 
 ### Added

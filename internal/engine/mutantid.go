@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -23,18 +24,15 @@ import (
 func mutantIdentities(pkg *types.Package, info *types.Info, fset *token.FileSet, file ast.Node, original []byte, relFile, mutatorName string, m mutator.Mutator) map[string]string {
 	ids := make(map[string]string)
 	occurrences := make(map[string]int)
-	changed := mutesting.MutateWalkWithPositions(pkg, info, file, m)
-	for mutation := range changed {
+	_ = mutesting.VisitMutations(context.Background(), pkg, info, file, m, func(mutation mutesting.PositionedMutation) error {
 		if key, text, ok := identityText(fset, mutation, original); ok {
 			if _, dup := ids[key]; !dup {
 				ids[key] = baseline.MutantIDAt(relFile, mutatorName, text, occurrences[text])
 				occurrences[text]++
 			}
 		}
-		changed <- mutesting.PositionedMutation{}
-		<-changed
-		changed <- mutesting.PositionedMutation{}
-	}
+		return nil
+	})
 	return ids
 }
 

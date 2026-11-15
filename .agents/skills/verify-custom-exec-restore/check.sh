@@ -3,14 +3,14 @@ set -euo pipefail
 
 skill_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd "$skill_dir/../../.." && pwd)
-scratch=$(mktemp -d "${TMPDIR:-/tmp}/go-mutesting-custom-exec-verify.XXXXXX")
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/mutago-custom-exec-verify.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 
 expected_sha=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
-if [[ -n ${GOMUTESTING_TLC_JAR:-} ]]; then
-  jar=$GOMUTESTING_TLC_JAR
+if [[ -n ${MUTAGO_TLC_JAR:-} ]]; then
+  jar=$MUTAGO_TLC_JAR
 else
-  cache_dir=${XDG_CACHE_HOME:-"$HOME/.cache"}/go-mutesting-formal-verification
+  cache_dir=${XDG_CACHE_HOME:-"$HOME/.cache"}/mutago-formal-verification
   jar=$cache_dir/tla2tools-1.7.4.jar
   mkdir -p "$cache_dir"
   if [[ ! -f $jar ]]; then
@@ -59,7 +59,7 @@ else
 fi
 
 echo "Checking the real custom executor and both bundled scripts"
-if (cd "$repo_root" && GOMUTESTING_VERIFY_ROOT="$repo_root" GOMAXPROCS=1 \
+if (cd "$repo_root" && MUTAGO_VERIFY_ROOT="$repo_root" GOMAXPROCS=1 \
     go test -count=1 -overlay "$scratch/overlay.json" \
       -run '^TestCustomExecRestoresSource$' -v ./internal/engine); then
   echo "PASS: the real scripts preserved the source in every probe"
