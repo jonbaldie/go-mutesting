@@ -15,7 +15,7 @@ The check needs Go, Java, Python 3, curl, and shasum. It downloads TLC 1.7.4 if 
 
 ## Model and scope
 
-Synchronized against production code at `189b6a8`: `VisitMutations`, `mutationWalk.Visit`, `withMutation`, `walkWithHandshake`, `mutationHandshake.acknowledgeApplied`, and `mutationHandshake.acknowledgeReset` in `walk.go`. Re-read these functions on every run; when their behavior changes, update the model, probe, and synchronization commit together. A passing model alone does not establish that the Go code implements it.
+Synchronized against production code at `8df20e1d4be438203689f540acf6138d7d8fb89c`: `VisitMutations`, `mutationWalk.Visit`, `withMutation`, `walkWithHandshake`, `mutationHandshake.acknowledgeApplied`, and `mutationHandshake.acknowledgeReset` in `walk.go`. Re-read these functions on every run; when their behavior changes, update the model, probe, and synchronization commit together. A passing model alone does not establish that the Go code implements it.
 
 `Walk.tla` models two sequential mutations, with separate steps for applying a mutation, callback return or unwind, deferred reset, and advancing. The channel variant models completion of the applied and reset acknowledgments, whose expected phases are owned by `mutationHandshake`; the synchronous variant can return an error, cancel in the callback, or panic. `OriginalOutsideMutation` requires original syntax before another mutation, on the reset notification, and at each terminal state. The Go probe independently checks these observations and exercises both channel result types. Terminal self-loops are deliberate; TLC checks deadlocks elsewhere.
 
