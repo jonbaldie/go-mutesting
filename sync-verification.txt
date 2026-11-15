@@ -1,0 +1,6 @@
+Verification guide sync follow-up
+Merged source baseline: 8df20e1d4be438203689f540acf6138d7d8fb89c
+Follow-up head: caafefa (guide references and changelog only)
+Fresh clone: merged baseline resolves and baseline diff succeeds
+GOMAXPROCS=1 ./scripts/check-change.sh: PASS; 0 changed Go mutations
+Independent review: no material findings
