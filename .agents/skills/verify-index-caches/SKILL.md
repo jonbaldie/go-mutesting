@@ -5,7 +5,7 @@ description: Check identifier and safety index clearing and coverage path-cache 
 
 # Verify index caches
 
-Run after changing `astutil/index_registry.go`, `astutil/query.go`, `astutil/safety.go`, or `internal/coverage/coverage.go`. Model and probes synced to production commit `8df20e1d4be438203689f540acf6138d7d8fb89c`.
+Run after changing `astutil/index_registry.go`, `astutil/query.go`, `astutil/safety.go`, `internal/coverage/coverage.go`, or its path matcher in `internal/sourcepath/suffix.go`. Model and probes synced to production commit `8df20e1d4be438203689f540acf6138d7d8fb89c`.
 
 ```sh
 .agents/skills/verify-index-caches/check.sh
