@@ -1,0 +1,11 @@
+Verification evidence - mutago and go-mutesting
+
+Historical stale verification references: rejected in both repositories.
+Historical first-match path faults: caught by coverage and diff tests.
+Shared matcher first-match and empty-key faults: caught by behavior tests.
+Full Go test suites: passed in both repositories.
+Verification reference checker tests: passed in both repositories.
+Affected formal verification checks: passed in both repositories.
+Changed-code checks: passed in both repositories.
+
+Evidence summary for review PRs; CI results are shown on each PR.
