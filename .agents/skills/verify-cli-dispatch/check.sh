@@ -51,3 +51,27 @@ fi
 if ! grep -q 'second signal did not terminate process' "$tmp/broken-signal.log"; then cat "$tmp/broken-signal.log" >&2; echo 'ERROR: unrelated signal failure' >&2; exit 1; fi
 echo 'PASS: missing signal stop was detected'
 GOMAXPROCS=1 go test -count=1 -run '^TestInterruptLifecycle$' ./cmd/go-mutesting
+cp "$skill/Dispatch.tla" "$skill/Dispatch.cfg" "$tmp/"
+(cd "$tmp" && java -XX:+UseParallelGC -Xmx256m -cp "$jar" tlc2.TLC -workers 1 -config Dispatch.cfg Dispatch.tla)
+sed 's/Broken = FALSE/Broken = TRUE/' "$tmp/Dispatch.cfg" > "$tmp/broken-dispatch.cfg"
+if (cd "$tmp" && java -XX:+UseParallelGC -Xmx256m -cp "$jar" tlc2.TLC -workers 1 -config broken-dispatch.cfg Dispatch.tla) > "$tmp/broken-dispatch-model.log" 2>&1; then echo 'Broken dispatch model passed' >&2; exit 1; fi
+grep -q 'Invariant Expected is violated' "$tmp/broken-dispatch-model.log" || { cat "$tmp/broken-dispatch-model.log" >&2; exit 1; }
+python3 - "$root" "$tmp" <<'PY'
+import json, pathlib, sys
+root,tmp=map(pathlib.Path,sys.argv[1:]); source=root/'cmd/go-mutesting/main.go'; s=source.read_text(); old='if len(targets.Files) == 0 {'
+if s.count(old)!=1: raise SystemExit('target mutation no longer applies')
+(tmp/'target.go').write_text(s.replace(old, 'if false && len(targets.Files) == 0 {'))
+overlay=json.loads((tmp/'normal.json').read_text()); overlay['Replace'][str(source)]=str(tmp/'target.go'); (tmp/'target.json').write_text(json.dumps(overlay))
+PY
+GOMAXPROCS=1 go test -count=1 -overlay "$tmp/normal.json" -run '^TestVerifyCLIDispatch$' ./cmd/go-mutesting
+if GOMAXPROCS=1 go test -count=1 -overlay "$tmp/target.json" -run '^TestVerifyCLIDispatch/target_before_baseline$' ./cmd/go-mutesting >"$tmp/target.log" 2>&1; then echo 'Broken target precedence passed' >&2; exit 1; fi
+grep -q 'dispatch target before baseline' "$tmp/target.log" || { cat "$tmp/target.log" >&2; exit 1; }
+echo 'Detected broken target precedence in model and code'
+GOMAXPROCS=1 go test -count=1 -overlay "$tmp/normal.json" -run '^TestVerifyCLIDispatch$' ./cmd/go-mutesting
+python3 - "$tmp/Interrupts.tla" <<'PY'
+import pathlib,sys
+p=pathlib.Path(sys.argv[1]); s=p.read_text(); old='selected = "signal" /\\ ~registered /\\ ~cancelled'; assert s.count(old)==1; p.write_text(s.replace(old,'selected = "signal" /\\ ~cancelled'))
+PY
+if (cd "$tmp" && java -XX:+UseParallelGC -Xmx256m -cp "$jar" tlc2.TLC -workers 1 -config Interrupts.cfg Interrupts.tla) > "$tmp/broken-interrupt-model.log" 2>&1; then echo 'Broken interrupt model passed' >&2; exit 1; fi
+grep -q 'Invariant UnregisteredBeforeSignalCancellation is violated' "$tmp/broken-interrupt-model.log" || { cat "$tmp/broken-interrupt-model.log" >&2; exit 1; }
+echo 'Detected broken interrupt model'

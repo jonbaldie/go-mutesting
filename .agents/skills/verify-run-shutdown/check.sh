@@ -53,3 +53,10 @@ if ! grep -q 'run tmp dirs' "$tmp/early.log"; then
 fi
 echo 'Detected missing cleanup after baseline cancellation'
 GOMAXPROCS=1 go test -count=1 -timeout 120s -run '^TestEngineCancelDuringPreparation/baseline$' ./internal/engine
+python3 - "$tmp/Shutdown.tla" <<'PY'
+import pathlib,sys
+p=pathlib.Path(sys.argv[1]); s=p.read_text(); old='closing /\\ queued = {} /\\ active = {} /\\ ~workersDone'; assert s.count(old)==1; p.write_text(s.replace(old,'closing /\\ ~workersDone'))
+PY
+if (cd "$tmp" && java -XX:+UseParallelGC -Xmx256m -cp "$jar" tlc2.TLC -workers 1 Shutdown.tla) >"$tmp/broken-shutdown-model.log" 2>&1; then echo 'Broken shutdown model passed' >&2; exit 1; fi
+grep -q 'Invariant SafeSummary is violated' "$tmp/broken-shutdown-model.log" || { cat "$tmp/broken-shutdown-model.log" >&2; exit 1; }
+echo 'Detected broken worker drain in model'

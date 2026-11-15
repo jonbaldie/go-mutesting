@@ -1,14 +1,18 @@
 --------------------------- MODULE Interrupts ---------------------------
-VARIABLES registered, first, stopped, cancelled, closed, terminated
-vars == <<registered, first, stopped, cancelled, closed, terminated>>
-Init == /\ registered = TRUE /\ first = FALSE /\ stopped = FALSE /\ cancelled = FALSE /\ closed = FALSE /\ terminated = FALSE
-First == /\ registered /\ ~first /\ first' = TRUE /\ UNCHANGED <<registered, stopped, cancelled, closed, terminated>>
-Stop == /\ first /\ registered /\ registered' = FALSE /\ stopped' = TRUE /\ UNCHANGED <<first, cancelled, closed, terminated>>
-Cancel == /\ stopped /\ ~cancelled /\ cancelled' = TRUE /\ UNCHANGED <<registered, first, stopped, closed, terminated>>
-Second == /\ cancelled /\ ~terminated /\ terminated' = ~registered /\ UNCHANGED <<registered, first, stopped, cancelled, closed>>
-Close == /\ ~closed /\ closed' = TRUE /\ UNCHANGED <<registered, first, stopped, cancelled, terminated>>
-Done == /\ terminated /\ UNCHANGED vars
-Next == First \/ Stop \/ Cancel \/ Second \/ Close \/ Done
+VARIABLES registered, first, selected, cancelled, cause, closed, terminated
+vars == <<registered, first, selected, cancelled, cause, closed, terminated>>
+Init == /\ registered = TRUE /\ first = FALSE /\ selected = "none" /\ cancelled = FALSE /\ cause = "none" /\ closed = FALSE /\ terminated = FALSE
+First == /\ registered /\ ~first /\ first' = TRUE /\ UNCHANGED <<registered, selected, cancelled, cause, closed, terminated>>
+SelectSignal == /\ selected = "none" /\ first /\ selected' = "signal" /\ UNCHANGED <<registered, first, cancelled, cause, closed, terminated>>
+SelectDone == /\ selected = "none" /\ cancelled /\ selected' = "done" /\ UNCHANGED <<registered, first, cancelled, cause, closed, terminated>>
+Stop == /\ selected # "none" /\ registered /\ registered' = FALSE /\ UNCHANGED <<first, selected, cancelled, cause, closed, terminated>>
+CancelSignal == /\ selected = "signal" /\ ~registered /\ ~cancelled /\ cancelled' = TRUE /\ cause' = "signal" /\ UNCHANGED <<registered, first, selected, closed, terminated>>
+CloseCancel == /\ ~closed /\ ~cancelled /\ cancelled' = TRUE /\ cause' = "close" /\ UNCHANGED <<registered, first, selected, closed, terminated>>
+CloseWait == /\ ~registered /\ cancelled /\ ~closed /\ closed' = TRUE /\ UNCHANGED <<registered, first, selected, cancelled, cause, terminated>>
+Second == /\ cancelled /\ ~registered /\ ~terminated /\ terminated' = TRUE /\ UNCHANGED <<registered, first, selected, cancelled, cause, closed>>
+Done == /\ closed /\ UNCHANGED vars
+Next == First \/ SelectSignal \/ SelectDone \/ Stop \/ CancelSignal \/ CloseCancel \/ CloseWait \/ Second \/ Done
 Spec == Init /\ [][Next]_vars
-UnregisteredBeforeCancellation == cancelled => ~registered
+UnregisteredBeforeSignalCancellation == cause = "signal" => ~registered
+CloseWaitsForUnregistration == closed => ~registered
 =============================================================================

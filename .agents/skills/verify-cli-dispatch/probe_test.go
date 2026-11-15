@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -94,5 +95,50 @@ func TestVerifyCLIHandledBeforeErrors(t *testing.T) {
 		if !handled || code != returnOk {
 			t.Fatalf("early exit was not handled before errors for %v: %v %d", args, handled, code)
 		}
+	}
+}
+
+func TestVerifyCLIDispatch(t *testing.T) {
+	t.Setenv("GO_FLAGS_COMPLETION", "")
+	dir := t.TempDir()
+	source := "main.go"
+	baseline := filepath.Join(dir, "bad.json")
+	config := filepath.Join(dir, "bad.yaml")
+	for path, text := range map[string]string{baseline: "not json", config: "unknown_field: true\n"} {
+		if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+		code int
+	}{
+		{"config before target", []string{"--config=" + config}, "Could not parse config", returnError},
+		{"target before baseline", []string{"--baseline=" + baseline, filepath.Join(dir, "missing.go")}, "Could not find any suitable", returnError},
+		{"baseline before info", []string{"--baseline=" + baseline, "--list-files", source}, "Cannot load baseline", returnError},
+		{"list files", []string{"--list-files", source}, source, returnOk},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := os.CreateTemp(t.TempDir(), "out")
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldOut, oldErr := os.Stdout, os.Stderr
+			os.Stdout, os.Stderr = f, f
+			code := mainCmd(tc.args)
+			os.Stdout, os.Stderr = oldOut, oldErr
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			out, err := os.ReadFile(f.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if code != tc.code || !strings.Contains(string(out), tc.want) {
+				t.Fatalf("dispatch %s: got %d %q, want %d containing %q", tc.name, code, out, tc.code, tc.want)
+			}
+		})
 	}
 }

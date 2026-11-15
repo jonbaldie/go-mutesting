@@ -45,3 +45,32 @@ for spec in 'admission:TestMutantScopeAdmitDuplicateAndOrder:matching mutant sho
  echo "Detected broken $name implementation"
 done
 GOMAXPROCS=1 go test -count=1 -run '^(TestMutantScopeAdmitDuplicateAndOrder|TestRunnerOutcomes)$' ./internal/engine
+cp "$skill/Lifecycle.tla" "$skill/Lifecycle.cfg" "$tmp/"
+(cd "$tmp" && java -XX:+UseParallelGC -Xmx256m -cp "$jar" tlc2.TLC -workers 1 -config Lifecycle.cfg Lifecycle.tla)
+for fault in BrokenScope BrokenSink BrokenOutcome; do
+ sed "s/$fault = FALSE/$fault = TRUE/" "$tmp/Lifecycle.cfg" > "$tmp/lifecycle-broken.cfg"
+ if (cd "$tmp" && java -XX:+UseParallelGC -Xmx256m -cp "$jar" tlc2.TLC -workers 1 -config lifecycle-broken.cfg Lifecycle.tla) >"$tmp/lifecycle-$fault.log" 2>&1; then echo "Broken $fault model passed" >&2; exit 1; fi
+ case "$fault" in BrokenScope) expected=ScopeOrder;; BrokenSink) expected=SinkOrder;; BrokenOutcome) expected=RunnerResult;; esac
+ grep -q "Invariant $expected is violated" "$tmp/lifecycle-$fault.log" || { cat "$tmp/lifecycle-$fault.log" >&2; exit 1; }
+ echo "Detected broken model $fault"
+done
+python3 - "$root" "$skill" "$tmp" <<'PY'
+import json,pathlib,sys
+root,skill,tmp=map(pathlib.Path,sys.argv[1:]); probe={str(root/'internal/engine/verification_lifecycle_test.go'):str(skill/'lifecycle_probe_test.go')}
+(tmp/'lifecycle-normal.json').write_text(json.dumps({'Replace':probe}))
+for name,source,old,new in [
+ ('scope',root/'internal/engine/scope.go','if gitDiffExcludes(s.gitLines, c.repoFile, c.absFile, c.line) {','if gitDiffExcludes(s.gitLines, c.repoFile, c.absFile, c.line) && c.id == s.runID {'),
+ ('sink',root/'internal/engine/mode.go','case opts.General.DryRun:','case opts.General.DryRun && !opts.Exec.NoExec:'),
+]:
+ s=source.read_text()
+ if s.count(old)!=1: raise SystemExit(name+' mutation no longer applies')
+ broken=tmp/(name+'-lifecycle.go');broken.write_text(s.replace(old,new)); (tmp/(name+'-lifecycle.json')).write_text(json.dumps({'Replace':{**probe,str(source):str(broken)}}))
+PY
+GOMAXPROCS=1 go test -count=1 -overlay "$tmp/lifecycle-normal.json" -run '^TestVerify(Scope|Sink)Precedence$' ./internal/engine
+for spec in 'scope:Scope:scope precedence' 'sink:Sink:sink precedence'; do
+ IFS=: read -r name test expected <<< "$spec"
+ if GOMAXPROCS=1 go test -count=1 -overlay "$tmp/$name-lifecycle.json" -run "^TestVerify${test}Precedence$" ./internal/engine >"$tmp/$name-lifecycle.log" 2>&1; then echo "Broken $name passed" >&2; exit 1; fi
+ grep -q "$expected" "$tmp/$name-lifecycle.log" || { cat "$tmp/$name-lifecycle.log" >&2; exit 1; }
+ echo "Detected broken $name precedence in code"
+done
+GOMAXPROCS=1 go test -count=1 -overlay "$tmp/lifecycle-normal.json" -run '^TestVerify(Scope|Sink)Precedence$' ./internal/engine

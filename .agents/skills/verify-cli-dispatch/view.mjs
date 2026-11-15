@@ -1,3 +1,3 @@
-export const title = 'Interrupt cancellation';
-export const state = v => v.terminated ? 'Default signal terminates' : v.cancelled ? 'Run cancelled' : v.stopped ? 'Signal interception stopped' : v.first ? 'First signal received' : 'Signal interception active';
-export const step = action => ({First:'Receive first signal', Stop:'Stop interception', Cancel:'Cancel run', Second:'Receive second signal', Close:'Close', Done:'End'})[action] || action;
+export const title = 'Interrupt and normal close';
+export const state = v => v.terminated ? 'Default signal terminates' : v.closed ? 'Interrupt owner closed' : v.cancelled && v.registered ? 'Run cancelled, interception active' : v.cancelled ? 'Run cancelled, interception stopped' : !v.registered ? 'Signal interception stopped' : v.first ? 'First signal received' : 'Signal interception active';
+export const step = action => ({First:'Receive first signal', SelectSignal:'Choose signal', SelectDone:'Choose cancellation', Stop:'Stop interception', CancelSignal:'Cancel after signal', CloseCancel:'Close cancels run', CloseWait:'Close finishes', Second:'Receive second signal', Done:'End'})[action] || action;
