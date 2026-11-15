@@ -5,7 +5,7 @@ description: Check baseline loading, update eligibility, write failure and reloa
 
 # Verify baseline persistence
 
-Synchronized with production at `189b6a8`. Inspect `git diff 189b6a8 -- internal/baseline internal/engine` and uncommitted changes, then run from the repository root:
+Synchronized with production at `8df20e1d4be438203689f540acf6138d7d8fb89c`. Inspect `git diff 8df20e1d4be438203689f540acf6138d7d8fb89c -- internal/baseline internal/engine` and uncommitted changes, then run from the repository root:
 
 ```sh
 .agents/skills/verify-baseline-persistence/check.sh

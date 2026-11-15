@@ -11,7 +11,7 @@ description: Verify source preservation when a bundled custom exec finishes, is 
 
 ## Coverage and sync
 
-Last matched against commit `359f0be`:
+Last matched against commit `8df20e1d4be438203689f540acf6138d7d8fb89c`:
 
 | Code | What to match to the model |
 | --- | --- |
@@ -24,7 +24,7 @@ Last matched against commit `359f0be`:
 From the repo root, inspect changes since the sync commit, including uncommitted changes:
 
 ```sh
-baseline=359f0be
+baseline=8df20e1d4be438203689f540acf6138d7d8fb89c
 git diff "$baseline" -- internal/engine/engine.go internal/engine/mode.go internal/engine/runner.go cmd/go-mutesting/main.go scripts/exec/test-mutated-package.sh scripts/exec/test-current-directory.sh scripts/exec/overlay.sh
 ```
 
