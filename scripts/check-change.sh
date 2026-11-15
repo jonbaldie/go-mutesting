@@ -43,4 +43,5 @@ printf 'json_output: false\n' > "$temporary_directory/config.yml"
 	github.com/jonbaldie/go-mutesting/v2/internal/filter \
 	github.com/jonbaldie/go-mutesting/v2/internal/coverage \
 	github.com/jonbaldie/go-mutesting/v2/internal/gitdiff \
+	github.com/jonbaldie/go-mutesting/v2/internal/sourcepath \
 	github.com/jonbaldie/go-mutesting/v2/internal/models

@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 Ports the state-machine and verification work from quality-gates/mutago #370.
 
 ### Changed
+- Share source-path suffix matching between coverage and changed-line filtering.
 - Make mutation-run lifecycles, input parsing, coverage collection, and cache ownership more explicit, and add bounded verification skills for their state transitions.
 
 ### Fixed
