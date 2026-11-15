@@ -11,29 +11,24 @@ description: Verify source preservation when a bundled custom exec finishes, is 
 
 ## Coverage and sync
 
-Last matched against the port of quality-gates/mutago PR #362:
+Last matched against commit `359f0be`:
 
 | Code | What to match to the model |
 | --- | --- |
-| `internal/engine/engine.go`: `RunResolved`, `validateAndInitRun`, `initRun`, `mutateAll`, `queueMutation`, `startWorkerPool`, `runExecJob`, `mutateExec`, `runCustomExec` | Passing the run context to each custom exec, applying its timeout, starting the process, waiting, and returning. |
+| `internal/engine/engine.go`: `RunResolved`, `validateAndInitRun`, `initRun`, `mutateAll`, `queueMutation`, `startExecutionPool`, `executionPool.submit`, `executionPool.stop`, `runExecJob`, `runCustomExec` | Passing the run context to each custom exec, applying its timeout, starting the process, waiting, and returning. |
 | `internal/engine/mode.go`: `newMutantSink`, `executeSink.admit` | Sending each mutation to the worker queue. |
-| `internal/engine/runner.go`: `resolveRunner` | Selecting the custom command and limiting a run to one custom worker. |
-| `cmd/go-mutesting/main.go`: `main` | Interrupt and termination cancel the engine's context. |
+| `internal/engine/runner.go`: `resolveRunner`, `executeRunner` | Selecting and invoking the custom command and limiting a run to one custom worker. |
+| `cmd/go-mutesting/main.go`: `runMutationTesting` | Interrupt and termination cancel the engine's context. |
 | `scripts/exec/test-mutated-package.sh`, `scripts/exec/test-current-directory.sh`, `scripts/exec/overlay.sh` | Passing an overlay to `go test` without modifying the original source. |
 
-From the repo root, find the port commit and inspect the diff since it, including uncommitted changes. This also finds the squash commit after the PR merges:
+From the repo root, inspect changes since the sync commit, including uncommitted changes:
 
 ```sh
-baseline=$(git log HEAD --format=%H \
-  --grep='^fix: sync custom exec and mutant scoring from mutago' -1)
-if [ -n "$baseline" ]; then
-  git diff "$baseline" -- internal/engine/engine.go internal/engine/mode.go internal/engine/runner.go cmd/go-mutesting/main.go scripts/exec/test-mutated-package.sh scripts/exec/test-current-directory.sh scripts/exec/overlay.sh
-else
-  echo 'Baseline commit unavailable; inspect all covered code.'
-fi
+baseline=359f0be
+git diff "$baseline" -- internal/engine/engine.go internal/engine/mode.go internal/engine/runner.go cmd/go-mutesting/main.go scripts/exec/test-mutated-package.sh scripts/exec/test-current-directory.sh scripts/exec/overlay.sh
 ```
 
-Read every changed covered function and compare its actual operations and ordering with `CustomExec.tla`, its configurations, and `probe_test.go`. If the scripts differ, check a model for each implementation. Update the model and probe for intended changes, including intermediate states where the real code can be interrupted. To advance the baseline after confirming the verification matches the covered code, start that commit's subject with `fix: sync custom exec and mutant scoring from mutago`. Keep checking the working-tree diff too. If the old commit is unavailable, inspect all covered code instead.
+Read every changed covered function and compare its actual operations and ordering with `CustomExec.tla`, its configurations, and `probe_test.go`. If the scripts differ, check a model for each implementation. Update the model and probe for intended changes, including intermediate states where the real code can be interrupted. Move the sync commit forward only after confirming the verification describes the covered code at the new commit; keep checking the working-tree diff too. If the old commit is unavailable, inspect all covered code instead.
 
 ## Run and interpret
 
@@ -43,7 +38,7 @@ From the repo root run:
 ./.agents/skills/verify-custom-exec-restore/check.sh
 ```
 
-On macOS or Linux, it needs Go, Java, Python 3 and Bash. The first run also needs `curl` and network access to download the SHA-256-pinned TLC 1.7.4 jar; `GOMUTESTING_TLC_JAR` may point to the same jar. It runs the normal-completion model, the cancellation model, and a real-code probe in temporary directories. Exit 0 means all three passed, 1 means at least one check failed, and 2 means the jar checksum was wrong; other setup failures also stop the command. The probe uses a Go test overlay to compile `probe_test.go` into the real engine package and replaces `go test` with a controlled child process. It never targets a user's source file.
+On macOS or Linux, it needs Go, Java, Python 3 and Bash. The first run also needs `curl` and network access to download the SHA-256-pinned TLC 1.7.4 jar; `MUTAGO_TLC_JAR` may point to the same jar. It runs the normal-completion model, the cancellation model, and a real-code probe in temporary directories. Exit 0 means all three passed, 1 means at least one check failed, and 2 means the jar checksum was wrong; other setup failures also stop the command. The probe uses a Go test overlay to compile `probe_test.go` into the real engine package and replaces `go test` with a controlled child process. It never targets a user's source file.
 
 Read **every model result** with the pstack `/statechart` skill: use `CustomExec.tla`, the configuration being checked, and `view.mjs`. Read its path for an invariant failure or its chart for a pass. The model is an abstraction, not an automatic translation of Go or Bash; the real-code probe and the source comparison above are required even when TLC passes.
 
@@ -53,6 +48,6 @@ For a failure, replay the path against the covered code and inspect the named pr
 
 ## Boundaries
 
-The model starts when one bundled script is preparing its test. `resolveRunner` limits a run with a custom command to one worker. The model explores cancellation before or after starting the test, killing the script, test completion, script exit, and `runCustomExec` return. It permits the child to finish after its parent is killed. The real probe checks the source and overlay while the child is running, then lets the child finish before checking the source again.
+The model starts when one bundled script is preparing its test. `resolveRunner` limits a run with a custom command to one worker. The model explores cancellation before or after starting the test, killing the script, test completion, script exit, and `runCustomExec` return. It permits the child to finish after its parent is killed. The real probe invokes `runCustomExec` directly and checks the source and overlay while the child is running, then lets the child finish before checking the source again. Worker admission, cancellation before execution, and runner selection are checked by source review rather than this probe.
 
 The model assumes the script creates the intended overlay and that the test and its descendants do not themselves write the source. It does not cover arbitrary third-party `--exec` programs, multiple mutations or runs, path quoting, or process crashes outside this path. The model allows `Wait` to return before a descendant exits; real output pipes can delay it. No liveness claim is made.

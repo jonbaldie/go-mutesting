@@ -58,25 +58,25 @@ type mutantSink interface {
 	finish(run *mutationRun, bl baseline.Snapshot) int
 }
 
-func newMutantSink(r *mutationRun, jobs chan<- execJob) mutantSink {
+func newMutantSink(r *mutationRun, pool *executionPool) mutantSink {
 	switch r.exec.mode {
 	case modeDryRun:
 		return &dryRunSink{stdout: r.stdout, totals: make(map[string]int), pending: make(map[string]int)}
 	case modeGenerate:
 		return &generateSink{stderr: r.stderr}
 	default:
-		return &executeSink{r: r, jobs: jobs}
+		return &executeSink{r: r, pool: pool}
 	}
 }
 
 // executeSink queues each mutant for a worker and reports the results.
 type executeSink struct {
 	r    *mutationRun
-	jobs chan<- execJob
+	pool *executionPool
 }
 
 func (s *executeSink) admit(fc *fileContext, mutation mutesting.PositionedMutation, mutationID int, prepared preparedMutation) {
-	queueMutation(s.r, s.jobs, fc, mutation, mutationID, fc.originalSource, prepared)
+	queueMutation(s.r, s.pool, fc, mutation, mutationID, fc.originalSource, prepared)
 }
 
 func (s *executeSink) flush(*fileContext) {}
@@ -130,8 +130,8 @@ func (s *dryRunSink) finish(run *mutationRun, _ baseline.Snapshot) int {
 // It skips the summary, baseline update, reports, and quality gates, because
 // no mutant was tested.
 type generateSink struct {
-	stderr io.Writer
-	failed bool
+	stderr   io.Writer
+	writeErr error
 }
 
 func (s *generateSink) admit(fc *fileContext, _ mutesting.PositionedMutation, mutationID int, prepared preparedMutation) {
@@ -141,7 +141,7 @@ func (s *generateSink) admit(fc *fileContext, _ mutesting.PositionedMutation, mu
 	}
 	if err != nil {
 		fmt.Fprintf(s.stderr, "Cannot write mutation: %v\n", err)
-		s.failed = true
+		s.writeErr = err
 	}
 }
 
@@ -152,7 +152,7 @@ func (s *generateSink) finish(run *mutationRun, _ baseline.Snapshot) int {
 		return code
 	}
 	fmt.Fprintln(run.stdout, "Cannot do a mutation testing summary since no exec command was executed.")
-	if s.failed {
+	if s.writeErr != nil {
 		return returnError
 	}
 	return returnOk
