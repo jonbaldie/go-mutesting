@@ -7,6 +7,12 @@ import (
 )
 
 func TestVerifyUnifiedDiff(t *testing.T) {
+	if got := FindOriginalStartLine([]byte("@@ -3,1 +4,1 @@\n-old\n+new\ninvalid trailing line\n")); got != 3 {
+		t.Fatalf("completed hunk followed by invalid input: got %d, want 3", got)
+	}
+	if got := FindOriginalStartLine([]byte("@@ -3,1 +4,1 @@\n-old")); got != 0 {
+		t.Fatalf("end of input before complete hunk: got %d, want 0", got)
+	}
 	alphabet := []byte{' ', '-', '+'}
 	var check func([]byte, int)
 	check = func(script []byte, depth int) {

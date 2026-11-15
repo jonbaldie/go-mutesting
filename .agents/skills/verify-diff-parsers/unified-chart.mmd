@@ -1,0 +1,13 @@
+---
+title: "Unified diff hunk"
+---
+stateDiagram-v2
+  s0: Await header
+  s1: Read hunk
+  s2: Reject hunk
+  s3: Accept change
+  [*] --> s0
+  s0 --> s1: read header
+  s0 --> s2: read header
+  s1 --> s2: complete hunk or read body line or reach end of input
+  s1 --> s3: complete hunk

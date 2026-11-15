@@ -4,6 +4,17 @@ skill=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$skill/../../.." && pwd)
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/mutago-diff-verify.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
+jar="${XDG_CACHE_HOME:-$HOME/.cache}/mutago-formal-verification/tla2tools-1.7.4.jar"
+mkdir -p "$(dirname "$jar")"
+if [ ! -f "$jar" ]; then
+  curl -fsSL https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar -o "$tmp/tla2tools.jar"
+  mv "$tmp/tla2tools.jar" "$jar"
+fi
+[ "$(shasum -a 256 "$jar" | cut -d ' ' -f 1)" = 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 ] || { echo 'TLC jar checksum mismatch' >&2; exit 1; }
+for model in Unified Git; do
+  cp "$skill/$model.tla" "$skill/$model.cfg" "$tmp/"
+  (cd "$tmp" && java -XX:+UseParallelGC -Xmx256m -cp "$jar" tlc2.TLC -workers 1 "$model.tla")
+done
 python3 - "$root" "$skill" "$tmp" <<'PY'
 import json, pathlib, sys
 root, skill, tmp = map(pathlib.Path, sys.argv[1:])

@@ -1,0 +1,11 @@
+---
+title: "Changed lines by file"
+---
+stateDiagram-v2
+  s0: Await file
+  s1: Return changed lines
+  s2: Read selected file
+  [*] --> s0
+  s0 --> s1: return coalesced lines
+  s0 --> s2: select file
+  s2 --> s1: return coalesced lines

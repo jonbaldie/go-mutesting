@@ -1,0 +1,53 @@
+---
+title: "Collecting and reporting completed mutants"
+---
+stateDiagram-v2
+  s0: 0 recorded#59; 0 events sent#59; no snapshot
+  s1: 1 recorded#59; 0 events sent#59; no snapshot
+  s2: 0 recorded#59; 0 events sent#59; snapshot ready
+  s3: 2 recorded#59; 0 events sent#59; no snapshot
+  s4: 1 recorded#59; 1 events sent#59; no snapshot
+  s5: 1 recorded#59; 0 events sent#59; snapshot ready
+  s6: 0 recorded#59; 0 events sent#59; summary sent
+  s7: 2 recorded#59; 1 events sent#59; no snapshot
+  s8: 2 recorded#59; 0 events sent#59; snapshot ready
+  s9: 1 recorded#59; 1 events sent#59; snapshot ready
+  s10: 1 recorded#59; 0 events sent#59; summary sent
+  s11: 2 recorded#59; 2 events sent#59; no snapshot
+  s12: 2 recorded#59; 1 events sent#59; snapshot ready
+  s13: 2 recorded#59; 0 events sent#59; summary sent
+  s14: 1 recorded#59; 1 events sent#59; summary sent
+  s15: 2 recorded#59; 2 events sent#59; snapshot ready
+  s16: 2 recorded#59; 1 events sent#59; summary sent
+  s17: 2 recorded#59; 2 events sent#59; summary sent
+  [*] --> s0
+  s0 --> s1: record a result
+  s0 --> s2: capture report
+  s1 --> s3: record a result
+  s1 --> s4: publish an event
+  s1 --> s5: capture report
+  s2 --> s5: record a result
+  s2 --> s6: publish summary
+  s3 --> s7: publish an event
+  s3 --> s8: capture report
+  s4 --> s7: record a result
+  s4 --> s9: capture report
+  s5 --> s8: record a result
+  s5 --> s9: publish an event
+  s5 --> s10: publish summary
+  s6 --> s10: record a result
+  s7 --> s11: publish an event
+  s7 --> s12: capture report
+  s8 --> s12: publish an event
+  s8 --> s13: publish summary
+  s9 --> s12: record a result
+  s9 --> s14: publish summary
+  s10 --> s13: record a result
+  s10 --> s14: publish an event
+  s11 --> s15: capture report
+  s12 --> s15: publish an event
+  s12 --> s16: publish summary
+  s13 --> s16: publish an event
+  s14 --> s16: record a result
+  s15 --> s17: publish summary
+  s16 --> s17: publish an event

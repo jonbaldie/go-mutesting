@@ -1,0 +1,16 @@
+---
+title: "Baseline persistence"
+---
+stateDiagram-v2
+  s0: Load baseline
+  s1: Report failure
+  s2: Finish mutation run
+  s3: Finished
+  s4: Reload written baseline
+  [*] --> s0
+  s0 --> s1: load baseline
+  s0 --> s2: load baseline
+  s2 --> s3: finish run
+  s2 --> s1: finish run
+  s2 --> s4: finish run
+  s4 --> s3: reload baseline
