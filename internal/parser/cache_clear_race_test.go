@@ -9,6 +9,14 @@ import (
 )
 
 func TestClearDoesNotAcceptAnInFlightLoad(t *testing.T) {
+	testClearDoesNotAcceptAnInFlightLoad(t, false)
+}
+
+func TestClearDoesNotAcceptAnInFlightBulkLoad(t *testing.T) {
+	testClearDoesNotAcceptAnInFlightLoad(t, true)
+}
+
+func testClearDoesNotAcceptAnInFlightLoad(t *testing.T, bulk bool) {
 	goBinary, err := exec.LookPath("go")
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +39,16 @@ func TestClearDoesNotAcceptAnInFlightLoad(t *testing.T) {
 	t.Setenv("CACHE_TEST_FINISH", finish)
 	ClearPackageCache()
 	done := make(chan struct{})
-	go func() { loadPkgForDir(dir); close(done) }()
+	go func() {
+		defer close(done)
+		if bulk {
+			if err := PreparePackages([]string{filepath.Join(dir, "p.go")}, dir); err != nil {
+				t.Error(err)
+			}
+		} else {
+			loadPkgForDir(dir)
+		}
+	}()
 	t.Cleanup(func() { _ = os.WriteFile(finish, nil, 0600); <-done; ClearPackageCache() })
 	deadline := time.Now().Add(15 * time.Second)
 	for {
@@ -48,6 +65,9 @@ func TestClearDoesNotAcceptAnInFlightLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-done
+	if _, ok := cachedPackages.prepared(filepath.Join(dir, "p.go")); ok {
+		t.Fatal("bulk load begun before clear repopulated the file cache")
+	}
 	_, ok, _ := cachedPackages.packageFor(dir)
 	if ok {
 		t.Fatal("load begun before clear repopulated the cache")
