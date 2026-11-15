@@ -1,11 +1,11 @@
 ---
 name: verify-diff-parsers
-description: Check the bounded state-machine behavior of the unified-diff and Git changed-line parsers when either parser changes.
+description: Check the bounded state-machine behavior of the unified-diff and Git changed-line parsers when a parser or shared path matching changes.
 ---
 
 # Verify diff parsers
 
-Run this skill after changing the unified-diff parser in `internal/parser` or the changed-line parser in `internal/gitdiff`. An incorrect first changed line or changed-line set can cause mutation testing to include or skip the wrong code.
+Run this skill after changing the unified-diff parser in `internal/parser` the changed-line parser in `internal/gitdiff`, or shared path matching in `internal/sourcepath`. An incorrect first changed line or changed-line set can cause mutation testing to include or skip the wrong code.
 
 The checked baseline is `8df20e1d4be438203689f540acf6138d7d8fb89c`. Inspect changes since that commit, including uncommitted changes, and assess whether the generated cases and expectations still describe the implementation's intended behavior:
 
