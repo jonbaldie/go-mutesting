@@ -35,7 +35,7 @@ For high-assurance environments, pin actions to full commit SHAs instead of vers
 
 ## Adopting gates on a legacy codebase
 
-If you have existing surviving mutants, record them first so CI doesn't fail on day one:
+Review existing surviving mutants and deliberately accept any you record in a baseline so CI doesn't fail on day one:
 
 ```bash
 # Run once locally to record the current state
@@ -55,6 +55,8 @@ Then in CI, only fail when something *new* escapes:
 ```
 
 Once you've written tests to kill the known survivors, remove them from the baseline with `--update-baseline` and tighten the gate.
+
+When the escaped-mutant gate fails, add tests that fail on the escaped mutations. Updating the baseline accepts survivors and should follow a deliberate review.
 
 Baseline IDs ignore line numbers, so moving code does not invalidate them. When one mutator makes the same change to identical lines in one file, each mutant gets its own ID, numbered in source order. Inserting a new identical line above an accepted one changes the numbering, so that change is reported as a new escape.
 

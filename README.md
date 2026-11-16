@@ -315,6 +315,8 @@ Add `--logger-github` to emit escaped mutants as GitHub Actions `::warning` anno
 
 If you have existing mutants that survive and your team has accepted them, you can record them in a baseline file. Future runs only fail when a *new* mutant escapes — not an already-known one.
 
+When the escaped-mutant gate fails, add tests that fail on the escaped mutations. Use `--update-baseline` only after deliberately reviewing and accepting survivors, such as when adopting mutation testing on an existing codebase.
+
 ```bash
 # First run: record the current survivors and exit 0
 go-mutesting --update-baseline ./...
