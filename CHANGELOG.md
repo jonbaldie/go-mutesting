@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.44] (2026-11-16)
+
 Ports the state-machine and verification work from quality-gates/mutago #370.
 
 ### Changed
@@ -858,7 +860,8 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.43...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.44...HEAD
+[v2.10.44]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.43...v2.10.44
 [v2.10.43]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.42...v2.10.43
 [v2.10.42]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.41...v2.10.42
 [v2.10.41]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.40...v2.10.41
