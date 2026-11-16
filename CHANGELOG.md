@@ -13,6 +13,7 @@ Ports the state-machine and verification work from quality-gates/mutago #370.
 - Make mutation-run lifecycles, input parsing, coverage collection, and cache ownership more explicit, and add bounded verification skills for their state transitions.
 
 ### Fixed
+- Escaped-mutant gate failures recommend adding tests instead of accepting survivors with a baseline update.
 - Check verification guide commit references in CI to prevent broken squash-merge baselines.
 - Keep verification guide sync points reachable after the squash merge.
 - Keep annotation exclusions scoped to their source file so unrelated files cannot suppress mutations.
