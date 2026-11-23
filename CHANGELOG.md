@@ -6,8 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+## [v2.10.46] (2026-11-23)
+
 ### Fixed
 - Include changed files after oversized diff lines in `--git-diff-lines` runs.
+
+## [v2.10.45] (2026-11-19)
+
+### Fixed
 - Keep coverage parsing proportional to the number of profile lines. A profile line declares a span of covered lines, which the parser now stores as a span instead of inserting one entry per line. A 53-byte crafted profile declaring a 2.1-billion-line span used to run for minutes or never finish; it now parses in microseconds with identical coverage answers.
 
 ## [v2.10.44] (2026-11-16)
@@ -864,7 +870,9 @@ Replicates quality-gates/mutago v2.10.7 through v2.10.15 (lockstep catch-up from
 [v2.10.19]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.18...v2.10.19
 [v2.10.20]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.19...v2.10.20
 [v2.10.21]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.20...v2.10.21
-[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.44...HEAD
+[Unreleased]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.46...HEAD
+[v2.10.46]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.45...v2.10.46
+[v2.10.45]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.44...v2.10.45
 [v2.10.44]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.43...v2.10.44
 [v2.10.43]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.42...v2.10.43
 [v2.10.42]: https://github.com/jonbaldie/go-mutesting/compare/v2.10.41...v2.10.42
