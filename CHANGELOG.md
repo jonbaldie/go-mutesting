@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). This pr
 
 ## [Unreleased]
 
+### Fixed
+- Count a test binary killed with `signal: killed` as an error, not a kill. `go test` exits 1 for that crash, which previously inflated the mutation score.
+
 ## [v2.10.46] (2026-11-23)
 
 ### Fixed
